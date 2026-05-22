@@ -504,6 +504,10 @@ public sealed class SceneContext
 
     /// <summary>
     /// Loads messages and state from a StoredConversation.
+    /// Only restores full execution state (ExecutionCheckpoint, ExecutedScenes, etc.) when the
+    /// stored phase represents an interrupted execution (e.g., AwaitingClient).
+    /// For completed/terminal phases, only the conversation messages are restored — enabling
+    /// a clean new turn without stale "don't repeat actions" instructions.
     /// </summary>
     public void LoadFromStoredConversation(StoredConversation stored)
     {
@@ -515,11 +519,23 @@ public sealed class SceneContext
         foreach (var cachedMsg in stored.Messages)
             ConversationHistory.Add(cachedMsg.ToTrackedMessage());
 
-        if (stored.ExecutionState != null)
+        // Only restore execution state for genuinely interrupted executions.
+        // For completed/terminal phases, we're starting a new turn — no need
+        // to inject ExecutionCheckpoint or restore ExecutedScenes/ExecutedTools.
+        if (stored.ExecutionState != null && IsInterruptedPhase(stored.ExecutionState.Phase))
             RestoreExecutionState(stored.ExecutionState);
 
         UserId = stored.UserId;
         ConversationKey = stored.ConversationKey;
         IsPublic = stored.IsPublic;
     }
+
+    /// <summary>
+    /// Determines whether the execution phase represents an interrupted (non-terminal) state
+    /// that requires full execution state restoration.
+    /// </summary>
+    private static bool IsInterruptedPhase(ExecutionPhase phase)
+        => phase is ExecutionPhase.AwaitingClient
+            or ExecutionPhase.ExecutingScene
+            or ExecutionPhase.Chaining;
 }

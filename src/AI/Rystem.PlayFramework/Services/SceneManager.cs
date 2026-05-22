@@ -453,6 +453,7 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
 
                 if (context.IsResuming)
                 {
+                    // Genuinely interrupted execution (AwaitingClient, ExecutingScene, Chaining)
                     loadedFromStorageOrCache = true;
                     _logger.LogInformation(
                         "Resuming conversation '{ConversationKey}' from cache - Phase: {Phase}, Scenes: {SceneCount}, Tools: {ToolCount}",
@@ -460,6 +461,16 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
                         context.RestoredExecutionState!.Phase,
                         context.ExecutedSceneOrder.Count,
                         context.ExecutedTools.Count);
+                }
+                else if (context.ConversationHistory.Any(m => m.Label == "User" || m.Label == "Assistant"))
+                {
+                    // New turn in existing conversation: messages restored but no execution state resume.
+                    // InitialContext is already in the history from cache, no need to re-initialize.
+                    loadedFromStorageOrCache = true;
+                    _logger.LogInformation(
+                        "New turn for conversation '{ConversationKey}' loaded from cache - Messages: {MessageCount}",
+                        context.ConversationKey,
+                        context.ConversationHistory.Count);
                 }
             }
 
