@@ -1,5 +1,4 @@
 ﻿using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.Extensions.AI;
 using Rystem.PlayFramework.Helpers;
 
@@ -15,6 +14,12 @@ public sealed class StoredMessage
     /// Business type flags.
     /// </summary>
     public MessageBusinessType BusinessType { get; set; }
+
+    /// <summary>
+    /// Numeric backup value for BusinessType.
+    /// Helps preserve flags across different JSON enum serialization modes.
+    /// </summary>
+    public int? BusinessTypeValue { get; set; }
 
     /// <summary>
     /// Label for debugging.
@@ -50,6 +55,7 @@ public sealed class StoredMessage
         var cached = new StoredMessage
         {
             BusinessType = tracked.BusinessType,
+            BusinessTypeValue = (int)tracked.BusinessType,
             Label = tracked.Label,
             Role = message.Role.Value,
             Text = message.Text,
@@ -57,7 +63,7 @@ public sealed class StoredMessage
         };
 
         // Convert complex contents to serializable format
-        if (message.Contents != null && message.Contents.Count > 0)
+        if (message.Contents.Count > 0)
         {
             cached.Contents = [];
             foreach (var content in message.Contents)
@@ -74,6 +80,8 @@ public sealed class StoredMessage
     /// </summary>
     public TrackedMessage ToTrackedMessage()
     {
+        var resolvedBusinessType = ResolveBusinessType(BusinessType, BusinessTypeValue, Label, Role);
+
         var role = Role switch
         {
             "user" => ChatRole.User,
@@ -108,10 +116,43 @@ public sealed class StoredMessage
 
         return new TrackedMessage
         {
-            BusinessType = BusinessType,
+            BusinessType = resolvedBusinessType,
             Label = Label,
             Message = message
         };
+    }
+
+    private static MessageBusinessType ResolveBusinessType(
+        MessageBusinessType businessType,
+        int? businessTypeValue,
+        string? label,
+        string role)
+    {
+        if (businessType != MessageBusinessType.None)
+            return businessType;
+
+        if (businessTypeValue.HasValue)
+        {
+            var fromNumeric = (MessageBusinessType)businessTypeValue.Value;
+            if (fromNumeric != MessageBusinessType.None)
+                return fromNumeric;
+        }
+
+        return InferBusinessTypeFromLabelOrRole(label, role);
+    }
+
+    private static MessageBusinessType InferBusinessTypeFromLabelOrRole(string? label, string role)
+    {
+        if (label == "InitialContext" || label?.StartsWith("SceneActor:", StringComparison.Ordinal) == true || label?.StartsWith("McpContext:", StringComparison.Ordinal) == true)
+            return MessageBusinessType.Message | MessageBusinessType.Store;
+
+        if (label == "User" || role == "user" || label == "Assistant" || role == "assistant")
+            return MessageBusinessType.Message | MessageBusinessType.Store | MessageBusinessType.Memory | MessageBusinessType.Resume;
+
+        if (label == "Tool" || role == "tool")
+            return MessageBusinessType.Message | MessageBusinessType.Store | MessageBusinessType.Resume;
+
+        return MessageBusinessType.None;
     }
 }
 

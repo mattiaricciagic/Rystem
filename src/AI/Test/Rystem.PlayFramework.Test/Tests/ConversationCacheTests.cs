@@ -343,6 +343,69 @@ public sealed class ConversationCacheTests
             m.Role == ChatRole.System && m.Text != null && m.Text.Contains("Execution Checkpoint"));
     }
 
+    [Fact]
+    public void StoredMessage_ToTrackedMessage_WhenBusinessTypeMissing_UsesNumericBackup()
+    {
+        // Arrange
+        var stored = new StoredMessage
+        {
+            BusinessType = MessageBusinessType.None,
+            BusinessTypeValue = (int)(MessageBusinessType.Message | MessageBusinessType.Store),
+            Label = "InitialContext",
+            Role = "system",
+            Text = "ctx"
+        };
+
+        // Act
+        var tracked = stored.ToTrackedMessage();
+
+        // Assert
+        Assert.True(tracked.IsActiveMessage);
+        Assert.True(tracked.ShouldStore);
+    }
+
+    [Fact]
+    public void LoadFromStoredConversation_WhenBusinessTypeMissingForLegacyMessages_RecoversFlagsFromLabel()
+    {
+        // Arrange
+        var stored = new StoredConversation
+        {
+            ConversationKey = "legacy-flags",
+            UserId = null,
+            IsPublic = true,
+            Timestamp = DateTime.UtcNow,
+            Messages =
+            [
+                new StoredMessage { BusinessType = MessageBusinessType.None, BusinessTypeValue = null, Label = "InitialContext", Role = "system", Text = "System prompt" },
+                new StoredMessage { BusinessType = MessageBusinessType.None, BusinessTypeValue = null, Label = "User", Role = "user", Text = "Turn 1 question" },
+                new StoredMessage { BusinessType = MessageBusinessType.None, BusinessTypeValue = null, Label = "Assistant", Role = "assistant", Text = "Turn 1 answer" },
+            ],
+            ExecutionState = new ExecutionState { Phase = ExecutionPhase.Completed }
+        };
+
+        var context = new SceneContext
+        {
+            ServiceProvider = null!,
+            Input = MultiModalInput.FromText("Turn 2 question"),
+            ChatClientManager = null!
+        };
+
+        // Act
+        context.LoadFromStoredConversation(stored);
+        context.AddUserMessage(context.Input);
+
+        var llmMessages = context.GetMessagesForLLM();
+        var storeMessages = context.GetMessagesToStore();
+
+        // Assert
+        Assert.Equal(4, llmMessages.Count);
+        Assert.Equal(4, storeMessages.Count);
+        Assert.Equal("InitialContext", context.ConversationHistory[0].Label);
+        Assert.Equal("User", context.ConversationHistory[1].Label);
+        Assert.Equal("Assistant", context.ConversationHistory[2].Label);
+        Assert.Equal("User", context.ConversationHistory[3].Label);
+    }
+
     #endregion
 
     #region Integration Tests (full pipeline with cache)
