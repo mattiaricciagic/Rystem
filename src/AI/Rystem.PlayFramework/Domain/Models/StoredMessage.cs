@@ -1,5 +1,4 @@
 ﻿using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.Extensions.AI;
 using Rystem.PlayFramework.Helpers;
 
@@ -64,7 +63,7 @@ public sealed class StoredMessage
         };
 
         // Convert complex contents to serializable format
-        if (message.Contents != null && message.Contents.Count > 0)
+        if (message.Contents.Count > 0)
         {
             cached.Contents = [];
             foreach (var content in message.Contents)
@@ -147,10 +146,7 @@ public sealed class StoredMessage
         if (label == "InitialContext" || label?.StartsWith("SceneActor:", StringComparison.Ordinal) == true || label?.StartsWith("McpContext:", StringComparison.Ordinal) == true)
             return MessageBusinessType.Message | MessageBusinessType.Store;
 
-        if (label == "User" || role == "user")
-            return MessageBusinessType.Message | MessageBusinessType.Store | MessageBusinessType.Memory | MessageBusinessType.Resume;
-
-        if (label == "Assistant" || role == "assistant")
+        if (label == "User" || role == "user" || label == "Assistant" || role == "assistant")
             return MessageBusinessType.Message | MessageBusinessType.Store | MessageBusinessType.Memory | MessageBusinessType.Resume;
 
         if (label == "Tool" || role == "tool")

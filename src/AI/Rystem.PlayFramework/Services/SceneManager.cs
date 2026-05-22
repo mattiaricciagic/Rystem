@@ -1,10 +1,8 @@
 ﻿using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Rystem.PlayFramework.Services;
 using Rystem.PlayFramework.Services.ExecutionModes;
 using Rystem.PlayFramework.Services.Helpers;
 using Rystem.PlayFramework.Telemetry;
