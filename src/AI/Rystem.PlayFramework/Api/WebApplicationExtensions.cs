@@ -356,7 +356,6 @@ public static class WebApplicationExtensions
                 {
                     httpContext.Response.Headers.Append("Content-Type", "text/event-stream");
                     httpContext.Response.Headers.Append("Cache-Control", "no-cache");
-                    httpContext.Response.Headers.Append("Connection", "keep-alive");
                     sseHeadersWritten = true;
                 }
 
@@ -1093,7 +1092,6 @@ public static class WebApplicationExtensions
             // Set response headers for SSE
             httpContext.Response.Headers.Append("Content-Type", "text/event-stream");
             httpContext.Response.Headers.Append("Cache-Control", "no-cache");
-            httpContext.Response.Headers.Append("Connection", "keep-alive");
 
             // Stream voice pipeline responses as SSE events
             await foreach (var voiceResponse in pipeline.ProcessAsync(audioData, audioFile.FileName, metadata, requestSettings, cancellationToken))
@@ -1166,4 +1164,3 @@ public static class WebApplicationExtensions
         }
     }
 }
-
