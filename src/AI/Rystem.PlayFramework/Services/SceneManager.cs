@@ -891,10 +891,29 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
             // Only send Completed if NOT waiting for client interaction
             // For Commands (CommandClient status), client closes stream on its side after execution
             // If feedbackMode requires response, client includes CommandResult in next user message
-            yield return YieldStatus(AiResponseStatus.Completed, "Execution completed", context.TotalCost, context.ConversationKey);
+            yield return YieldStatus(
+                status: AiResponseStatus.Completed,
+                message: "Execution completed",
+                cost: context.TotalCost,
+                conversationKey: context.ConversationKey,
+                inputTokens: lastResponse?.InputTokens,
+                outputTokens: lastResponse?.OutputTokens,
+                cachedInputTokens: lastResponse?.CachedInputTokens,
+                totalTokens: lastResponse?.TotalTokens
+                    ?? ((lastResponse?.InputTokens ?? 0)
+                        + (lastResponse?.OutputTokens ?? 0)
+                        + (lastResponse?.CachedInputTokens ?? 0)));
         }
     }
-    private AiSceneResponse YieldStatus(AiResponseStatus status, string? message = null, decimal? cost = null, string? conversationKey = null)
+    private AiSceneResponse YieldStatus(
+        AiResponseStatus status,
+        string? message = null,
+        decimal? cost = null,
+        string? conversationKey = null,
+        int? inputTokens = null,
+        int? outputTokens = null,
+        int? cachedInputTokens = null,
+        int? totalTokens = null)
     {
         return new AiSceneResponse
         {
@@ -902,7 +921,11 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
             Message = message,
             Cost = cost,
             TotalCost = cost ?? 0,
-            ConversationKey = conversationKey
+            ConversationKey = conversationKey,
+            InputTokens = inputTokens,
+            OutputTokens = outputTokens,
+            CachedInputTokens = cachedInputTokens,
+            TotalTokens = totalTokens
         };
     }
     private AiSceneResponse YieldAndTrack(SceneContext context, AiSceneResponse response)
