@@ -50,6 +50,7 @@ internal sealed class ResponseHelper : IResponseHelper
             InputTokens = inputTokens,
             OutputTokens = outputTokens,
             CachedInputTokens = cachedInputTokens,
+            TotalTokens = ComputeTotalTokens(inputTokens, outputTokens, cachedInputTokens),
             Cost = cost,
             TotalCost = context.AddCost(cost ?? 0),
             Contents = contents
@@ -92,6 +93,7 @@ internal sealed class ResponseHelper : IResponseHelper
             InputTokens = inputTokens,
             OutputTokens = outputTokens,
             CachedInputTokens = cachedInputTokens,
+            TotalTokens = ComputeTotalTokens(inputTokens, outputTokens, cachedInputTokens),
             Cost = cost,
             TotalCost = context.AddCost(cost ?? 0),
             Contents = contents
@@ -158,6 +160,7 @@ internal sealed class ResponseHelper : IResponseHelper
             InputTokens = inputTokens,
             OutputTokens = outputTokens,
             CachedInputTokens = cachedInputTokens,
+            TotalTokens = ComputeTotalTokens(inputTokens, outputTokens, cachedInputTokens),
             Cost = cost,
             TotalCost = context.AddCost(cost ?? 0),
             FunctionName = functionName,
@@ -168,5 +171,15 @@ internal sealed class ResponseHelper : IResponseHelper
         context.Responses.Add(response);
 
         return response;
+    }
+
+    private static int? ComputeTotalTokens(int? inputTokens, int? outputTokens, int? cachedInputTokens)
+    {
+        if (!inputTokens.HasValue && !outputTokens.HasValue && !cachedInputTokens.HasValue)
+        {
+            return null;
+        }
+
+        return (inputTokens ?? 0) + (outputTokens ?? 0) + (cachedInputTokens ?? 0);
     }
 }
