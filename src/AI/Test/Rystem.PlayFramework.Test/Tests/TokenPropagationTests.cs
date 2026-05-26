@@ -59,6 +59,23 @@ public class TokenPropagationTests
         Assert.Equal(finalResponse.TotalTokens, completed.TotalTokens);
     }
 
+    [Fact]
+    public void ComputeTotalTokens_WhenOnlyCachedTokensAreProvided_ShouldReturnCachedValue()
+    {
+        var responseHelperType = typeof(AiSceneResponse).Assembly
+            .GetType("Rystem.PlayFramework.Services.Helpers.ResponseHelper");
+        Assert.NotNull(responseHelperType);
+
+        var computeTotalTokensMethod = responseHelperType!.GetMethod(
+            "ComputeTotalTokens",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.NotNull(computeTotalTokensMethod);
+
+        var result = computeTotalTokensMethod!.Invoke(null, [null, null, 42]);
+
+        Assert.Equal(42, Assert.IsType<int>(result));
+    }
+
     private interface ITokenMathService
     {
         Task<double> AddAsync(double a, double b);
