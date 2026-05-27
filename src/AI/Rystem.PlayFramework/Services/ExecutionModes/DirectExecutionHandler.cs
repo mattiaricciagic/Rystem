@@ -257,7 +257,12 @@ internal sealed class DirectExecutionHandler : IExecutionModeHandler
             {
                 Status = AiResponseStatus.Running,
                 Message = responseText,
-                Contents = multiModalContents
+                Contents = multiModalContents,
+                InputTokens = totalInputTokens,
+                OutputTokens = totalOutputTokens,
+                CachedInputTokens = totalCachedInputTokens,
+                TotalTokens = (totalInputTokens ?? 0) + (totalOutputTokens ?? 0) + (totalCachedInputTokens ?? 0),
+                Cost = totalCost
             });
         }
         context.ExecutionPhase = ExecutionPhase.Completed;

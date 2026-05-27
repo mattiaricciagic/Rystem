@@ -76,6 +76,53 @@ public class TokenPropagationTests
         Assert.Equal(42, Assert.IsType<int>(result));
     }
 
+    [Fact]
+    public async Task DirectMode_TextOnlyPath_ShouldCarryTokensOnCompleted()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        services.AddPlayFramework(builder =>
+        {
+            builder.WithExecutionMode(SceneExecutionMode.Direct)
+                .AddScene("Calculator", "Simple calculator", sceneBuilder =>
+                {
+                    sceneBuilder.WithService<ITokenMathService>(serviceBuilder =>
+                    {
+                        serviceBuilder.WithMethod(x => x.AddAsync(default, default), "add", "Add two numbers");
+                    });
+                });
+        });
+
+        services.AddSingleton<ITokenMathService, TokenMathService>();
+        services.AddSingleton<IChatClient>(new MockDirectTextOnlyChatClient(
+            inputTokens: 77,
+            outputTokens: 11,
+            cachedInputTokens: 5));
+
+        var provider = services.BuildServiceProvider();
+        var sceneManager = provider.GetRequiredService<ISceneManager>();
+
+        var responses = new List<AiSceneResponse>();
+        await foreach (var response in sceneManager.ExecuteAsync(
+            message: "hello",
+            settings: new SceneRequestSettings
+            {
+                ExecutionMode = SceneExecutionMode.Direct,
+                EnableStreaming = false
+            }))
+        {
+            responses.Add(response);
+        }
+
+        var completed = responses.Last(r => r.Status == AiResponseStatus.Completed);
+
+        Assert.Equal(77, completed.InputTokens);
+        Assert.Equal(11, completed.OutputTokens);
+        Assert.Equal(5, completed.CachedInputTokens);
+        Assert.Equal(93, completed.TotalTokens);
+    }
+
     private interface ITokenMathService
     {
         Task<double> AddAsync(double a, double b);
@@ -169,6 +216,60 @@ public class TokenPropagationTests
             var message = new ChatMessage(ChatRole.Assistant, string.Empty);
             message.Contents.Add(functionCall);
             return message;
+        }
+    }
+
+    private sealed class MockDirectTextOnlyChatClient : IChatClient
+    {
+        private readonly int _inputTokens;
+        private readonly int _outputTokens;
+        private readonly int _cachedInputTokens;
+
+        public MockDirectTextOnlyChatClient(int inputTokens, int outputTokens, int cachedInputTokens)
+        {
+            _inputTokens = inputTokens;
+            _outputTokens = outputTokens;
+            _cachedInputTokens = cachedInputTokens;
+        }
+
+        public ChatClientMetadata Metadata => new("mock-direct-text-only-client", null, "mock-1.0");
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            var response = new ChatResponse([new ChatMessage(ChatRole.Assistant, "Plain text answer")])
+            {
+                ModelId = "mock-model",
+                Usage = new UsageDetails
+                {
+                    InputTokenCount = _inputTokens,
+                    OutputTokenCount = _outputTokens,
+                    CachedInputTokenCount = _cachedInputTokens,
+                    TotalTokenCount = _inputTokens + _outputTokens + _cachedInputTokens
+                }
+            };
+
+            return Task.FromResult(response);
+        }
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            yield return new ChatResponseUpdate(ChatRole.Assistant, "unused in this test")
+            {
+                FinishReason = ChatFinishReason.Stop
+            };
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
         }
     }
 }
