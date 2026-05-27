@@ -57,6 +57,8 @@ public class TokenPropagationTests
         Assert.Equal(finalResponse.OutputTokens, completed.OutputTokens);
         Assert.Equal(finalResponse.CachedInputTokens, completed.CachedInputTokens);
         Assert.Equal(finalResponse.TotalTokens, completed.TotalTokens);
+        Assert.Equal("mock-model", finalResponse.ModelName);
+        Assert.Equal("mock-model", completed.ModelName);
     }
 
     [Fact]
@@ -121,6 +123,105 @@ public class TokenPropagationTests
         Assert.Equal(11, completed.OutputTokens);
         Assert.Equal(5, completed.CachedInputTokens);
         Assert.Equal(93, completed.TotalTokens);
+        Assert.Equal("mock-model", completed.ModelName);
+
+        var finalResponse = responses.Last(r => r.Status == AiResponseStatus.FinalResponse);
+        Assert.Equal("mock-model", finalResponse.ModelName);
+    }
+
+    [Fact]
+    public async Task SceneMode_TextOnlyPath_ShouldCarryModelNameOnFinalAndCompleted()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        services.AddPlayFramework(builder =>
+        {
+            builder.WithExecutionMode(SceneExecutionMode.Scene)
+                .AddScene("Calculator", "Simple calculator", sceneBuilder =>
+                {
+                    sceneBuilder.WithService<ITokenMathService>(serviceBuilder =>
+                    {
+                        serviceBuilder.WithMethod(x => x.AddAsync(default, default), "add", "Add two numbers");
+                    });
+                });
+        });
+
+        services.AddSingleton<ITokenMathService, TokenMathService>();
+        services.AddSingleton<IChatClient>(new MockDirectTextOnlyChatClient(
+            inputTokens: 13,
+            outputTokens: 7,
+            cachedInputTokens: 2,
+            modelId: "model-scene-mode"));
+
+        var provider = services.BuildServiceProvider();
+        var sceneManager = provider.GetRequiredService<ISceneManager>();
+
+        var responses = new List<AiSceneResponse>();
+        await foreach (var response in sceneManager.ExecuteAsync(
+            message: "hello",
+            settings: new SceneRequestSettings
+            {
+                ExecutionMode = SceneExecutionMode.Scene,
+                SceneName = "Calculator",
+                EnableStreaming = false
+            }))
+        {
+            responses.Add(response);
+        }
+
+        var finalResponse = responses.Last(r => r.Status == AiResponseStatus.FinalResponse);
+        var completed = responses.Last(r => r.Status == AiResponseStatus.Completed);
+
+        Assert.Equal("model-scene-mode", finalResponse.ModelName);
+        Assert.Equal("model-scene-mode", completed.ModelName);
+    }
+
+    [Fact]
+    public async Task Completed_ShouldKeepModelNameNull_WhenProviderDoesNotReturnIt()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        services.AddPlayFramework(builder =>
+        {
+            builder.WithExecutionMode(SceneExecutionMode.Direct)
+                .AddScene("Calculator", "Simple calculator", sceneBuilder =>
+                {
+                    sceneBuilder.WithService<ITokenMathService>(serviceBuilder =>
+                    {
+                        serviceBuilder.WithMethod(x => x.AddAsync(default, default), "add", "Add two numbers");
+                    });
+                });
+        });
+
+        services.AddSingleton<ITokenMathService, TokenMathService>();
+        services.AddSingleton<IChatClient>(new MockDirectTextOnlyChatClient(
+            inputTokens: 9,
+            outputTokens: 4,
+            cachedInputTokens: 1,
+            modelId: null));
+
+        var provider = services.BuildServiceProvider();
+        var sceneManager = provider.GetRequiredService<ISceneManager>();
+
+        var responses = new List<AiSceneResponse>();
+        await foreach (var response in sceneManager.ExecuteAsync(
+            message: "hello",
+            settings: new SceneRequestSettings
+            {
+                ExecutionMode = SceneExecutionMode.Direct,
+                EnableStreaming = false
+            }))
+        {
+            responses.Add(response);
+        }
+
+        var finalResponse = responses.Last(r => r.Status == AiResponseStatus.FinalResponse);
+        var completed = responses.Last(r => r.Status == AiResponseStatus.Completed);
+
+        Assert.Null(finalResponse.ModelName);
+        Assert.Null(completed.ModelName);
     }
 
     private interface ITokenMathService
@@ -224,12 +325,14 @@ public class TokenPropagationTests
         private readonly int _inputTokens;
         private readonly int _outputTokens;
         private readonly int _cachedInputTokens;
+        private readonly string? _modelId;
 
-        public MockDirectTextOnlyChatClient(int inputTokens, int outputTokens, int cachedInputTokens)
+        public MockDirectTextOnlyChatClient(int inputTokens, int outputTokens, int cachedInputTokens, string? modelId = "mock-model")
         {
             _inputTokens = inputTokens;
             _outputTokens = outputTokens;
             _cachedInputTokens = cachedInputTokens;
+            _modelId = modelId;
         }
 
         public ChatClientMetadata Metadata => new("mock-direct-text-only-client", null, "mock-1.0");
@@ -241,7 +344,7 @@ public class TokenPropagationTests
         {
             var response = new ChatResponse([new ChatMessage(ChatRole.Assistant, "Plain text answer")])
             {
-                ModelId = "mock-model",
+                ModelId = _modelId,
                 Usage = new UsageDetails
                 {
                     InputTokenCount = _inputTokens,

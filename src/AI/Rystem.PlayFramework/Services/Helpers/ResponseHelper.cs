@@ -34,6 +34,7 @@ internal sealed class ResponseHelper : IResponseHelper
         string? sceneName,
         string? message,
         SceneContext context,
+        string? modelName = null,
         int? inputTokens = null,
         int? outputTokens = null,
         int? cachedInputTokens = null,
@@ -46,6 +47,7 @@ internal sealed class ResponseHelper : IResponseHelper
         {
             Status = AiResponseStatus.Running,
             SceneName = sceneName,
+            ModelName = modelName,
             Message = message,
             InputTokens = inputTokens,
             OutputTokens = outputTokens,
@@ -78,6 +80,7 @@ internal sealed class ResponseHelper : IResponseHelper
         string message,
         string? errorMessage,
         SceneContext context,
+        string? modelName = null,
         int? inputTokens = null,
         int? outputTokens = null,
         int? cachedInputTokens = null,
@@ -88,6 +91,7 @@ internal sealed class ResponseHelper : IResponseHelper
         {
             Status = AiResponseStatus.Error,
             SceneName = sceneName,
+            ModelName = modelName,
             Message = message,
             ErrorMessage = errorMessage,
             InputTokens = inputTokens,
@@ -142,6 +146,7 @@ internal sealed class ResponseHelper : IResponseHelper
         SceneContext context,
         AiResponseStatus status,
         string? sceneName = null,
+        string? modelName = null,
         string? message = null,
         string? errorMessage = null,
         int? inputTokens = null,
@@ -155,6 +160,7 @@ internal sealed class ResponseHelper : IResponseHelper
         {
             Status = status,
             SceneName = sceneName,
+            ModelName = modelName,
             Message = message,
             ErrorMessage = errorMessage,
             InputTokens = inputTokens,

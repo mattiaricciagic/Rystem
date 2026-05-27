@@ -114,4 +114,9 @@ internal sealed class StreamingResult
     /// Total cached input tokens used.
     /// </summary>
     public int? TotalCachedInputTokens { get; init; }
+
+    /// <summary>
+    /// Model identifier used for the final response, when available.
+    /// </summary>
+    public string? ModelName { get; init; }
 }

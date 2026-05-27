@@ -214,6 +214,7 @@ internal sealed class SceneExecutor : ISceneExecutor, IFactoryName
             int? totalInputTokens = null;
             int? totalOutputTokens = null;
             int? totalCachedInputTokens = null;
+            string? modelName = null;
 
             // Rebuild messages from context each iteration - using centralized sanitization
             var conversationMessages = context.GetMessagesForLLM();
@@ -252,6 +253,7 @@ internal sealed class SceneExecutor : ISceneExecutor, IFactoryName
                     totalInputTokens = lastResult.TotalInputTokens;
                     totalOutputTokens = lastResult.TotalOutputTokens;
                     totalCachedInputTokens = lastResult.TotalCachedInputTokens;
+                    modelName = lastResult.ModelName;
                 }
             }
             else
@@ -281,6 +283,7 @@ internal sealed class SceneExecutor : ISceneExecutor, IFactoryName
                 totalOutputTokens = responseWithCost.OutputTokens;
                 totalCachedInputTokens = responseWithCost.CachedInputTokens;
                 totalCost = responseWithCost.CalculatedCost;
+                modelName = responseWithCost.ModelId;
             }
 
             // Validate response
@@ -291,6 +294,7 @@ internal sealed class SceneExecutor : ISceneExecutor, IFactoryName
                     message: "No response from LLM",
                     errorMessage: null,
                     context: context,
+                    modelName: modelName,
                     inputTokens: totalInputTokens,
                     outputTokens: totalOutputTokens,
                     cachedInputTokens: totalCachedInputTokens,
@@ -327,6 +331,7 @@ internal sealed class SceneExecutor : ISceneExecutor, IFactoryName
                         sceneName: scene.Name,
                         message: string.Empty, // Text already streamed
                         context: context,
+                        modelName: modelName,
                         inputTokens: totalInputTokens,
                         outputTokens: totalOutputTokens,
                         cachedInputTokens: totalCachedInputTokens,
@@ -344,6 +349,7 @@ internal sealed class SceneExecutor : ISceneExecutor, IFactoryName
                         sceneName: scene.Name,
                         message: accumulatedText,
                         context: context,
+                        modelName: modelName,
                         inputTokens: totalInputTokens,
                         outputTokens: totalOutputTokens,
                         cachedInputTokens: totalCachedInputTokens,
@@ -371,6 +377,7 @@ internal sealed class SceneExecutor : ISceneExecutor, IFactoryName
                     context: context,
                     status: AiResponseStatus.FunctionRequest,
                     sceneName: scene.Name,
+                    modelName: modelName,
                     message: $"LLM returned {accumulatedFunctionCalls.Count} function call(s)",
                     inputTokens: totalInputTokens,
                     outputTokens: totalOutputTokens,
@@ -427,6 +434,7 @@ internal sealed class SceneExecutor : ISceneExecutor, IFactoryName
             message: $"Maximum tool calling iterations ({MaxToolCallIterations}) exceeded",
             errorMessage: "The conversation exceeded the maximum number of tool calling iterations.",
             context: context,
+            modelName: null,
             inputTokens: null,
             outputTokens: null,
             cachedInputTokens: null,

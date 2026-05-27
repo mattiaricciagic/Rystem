@@ -50,6 +50,7 @@ internal sealed class StreamingHelper : IStreamingHelper
         int? totalInputTokens = null;
         int? totalOutputTokens = null;
         int? totalCachedInputTokens = null;
+        string? modelName = null;
 
         try
         {
@@ -59,6 +60,10 @@ internal sealed class StreamingHelper : IStreamingHelper
             cancellationToken))
         {
             var chunk = streamUpdateWithCost.Update;
+            if (!string.IsNullOrWhiteSpace(chunk.ModelId))
+            {
+                modelName = chunk.ModelId;
+            }
 
             // Detect function calls in this chunk
             var chunkFunctionCalls = chunk.Contents?
@@ -107,7 +112,8 @@ internal sealed class StreamingHelper : IStreamingHelper
                     TotalCost = context.TotalCost,
                     TotalInputTokens = totalInputTokens,
                     TotalOutputTokens = totalOutputTokens,
-                    TotalCachedInputTokens = totalCachedInputTokens
+                    TotalCachedInputTokens = totalCachedInputTokens,
+                    ModelName = modelName
                 };
             }
 
@@ -154,7 +160,8 @@ internal sealed class StreamingHelper : IStreamingHelper
                     TotalCost = totalCost,
                     TotalInputTokens = totalInputTokens,
                     TotalOutputTokens = totalOutputTokens,
-                    TotalCachedInputTokens = totalCachedInputTokens
+                    TotalCachedInputTokens = totalCachedInputTokens,
+                    ModelName = modelName
                 };
                 yield break;
             }
@@ -181,7 +188,8 @@ internal sealed class StreamingHelper : IStreamingHelper
             TotalCost = totalCost,
             TotalInputTokens = totalInputTokens,
             TotalOutputTokens = totalOutputTokens,
-            TotalCachedInputTokens = totalCachedInputTokens
+            TotalCachedInputTokens = totalCachedInputTokens,
+            ModelName = modelName
         };
         } // close try
         finally
