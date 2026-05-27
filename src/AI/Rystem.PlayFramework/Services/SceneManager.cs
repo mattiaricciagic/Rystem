@@ -896,6 +896,7 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
                 message: "Execution completed",
                 cost: context.TotalCost,
                 conversationKey: context.ConversationKey,
+                modelName: lastResponse?.ModelName,
                 inputTokens: lastResponse?.InputTokens,
                 outputTokens: lastResponse?.OutputTokens,
                 cachedInputTokens: lastResponse?.CachedInputTokens,
@@ -910,6 +911,7 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
         string? message = null,
         decimal? cost = null,
         string? conversationKey = null,
+        string? modelName = null,
         int? inputTokens = null,
         int? outputTokens = null,
         int? cachedInputTokens = null,
@@ -919,6 +921,7 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
         {
             Status = status,
             Message = message,
+            ModelName = modelName,
             Cost = cost,
             TotalCost = cost ?? 0,
             ConversationKey = conversationKey,

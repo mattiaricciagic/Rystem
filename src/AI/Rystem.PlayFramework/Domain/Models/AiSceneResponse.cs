@@ -19,6 +19,11 @@ public sealed class AiSceneResponse
     public string? SceneName { get; set; }
 
     /// <summary>
+    /// LLM model identifier used to produce this response (if available).
+    /// </summary>
+    public string? ModelName { get; set; }
+
+    /// <summary>
     /// Function/tool name that was called (if applicable).
     /// </summary>
     public string? FunctionName { get; set; }

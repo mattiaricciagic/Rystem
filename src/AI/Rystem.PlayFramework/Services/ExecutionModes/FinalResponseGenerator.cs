@@ -83,6 +83,7 @@ internal sealed class FinalResponseGenerator : IFactoryName
                 sceneName: null,
                 message: finalResponseMessage?.Text,
                 context: context,
+                modelName: responseWithCost.ModelId,
                 inputTokens: responseWithCost.InputTokens,
                 outputTokens: responseWithCost.OutputTokens,
                 cachedInputTokens: responseWithCost.CachedInputTokens,

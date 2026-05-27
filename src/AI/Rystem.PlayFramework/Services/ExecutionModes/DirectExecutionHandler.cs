@@ -56,6 +56,7 @@ internal sealed class DirectExecutionHandler : IExecutionModeHandler
         int? totalInputTokens = null;
         int? totalOutputTokens = null;
         int? totalCachedInputTokens = null;
+        string? modelName = null;
 
         // Use streaming when enabled, fallback to non-streaming otherwise
         if (settings.EnableStreaming)
@@ -94,6 +95,7 @@ internal sealed class DirectExecutionHandler : IExecutionModeHandler
                 totalInputTokens = lastResult.TotalInputTokens;
                 totalOutputTokens = lastResult.TotalOutputTokens;
                 totalCachedInputTokens = lastResult.TotalCachedInputTokens;
+                modelName = lastResult.ModelName;
             }
         }
         else
@@ -136,6 +138,7 @@ internal sealed class DirectExecutionHandler : IExecutionModeHandler
             totalOutputTokens = responseWithCost.OutputTokens;
             totalCachedInputTokens = responseWithCost.CachedInputTokens;
             totalCost = responseWithCost.CalculatedCost;
+            modelName = responseWithCost.ModelId;
         }
 
         // Track costs for scene selection
@@ -150,6 +153,7 @@ internal sealed class DirectExecutionHandler : IExecutionModeHandler
             yield return YieldAndTrack(context, new AiSceneResponse
             {
                 Status = AiResponseStatus.BudgetExceeded,
+                ModelName = modelName,
                 Message = $"Budget limit of {settings.MaxBudget:F6} {context.ChatClientManager.Currency} exceeded. Total cost: {context.TotalCost:F6}",
                 ErrorMessage = "Maximum budget reached"
             });
@@ -181,6 +185,7 @@ internal sealed class DirectExecutionHandler : IExecutionModeHandler
                 yield return YieldAndTrack(context, new AiSceneResponse
                 {
                     Status = AiResponseStatus.ExecutingScene,
+                    ModelName = modelName,
                     Message = $"Selected scene: {selectedSceneName}",
                     SceneName = selectedSceneName,
                     Contents = multiModalContents
@@ -224,6 +229,7 @@ internal sealed class DirectExecutionHandler : IExecutionModeHandler
                     yield return YieldAndTrack(context, new AiSceneResponse
                     {
                         Status = AiResponseStatus.Error,
+                        ModelName = modelName,
                         Message = $"Scene '{selectedSceneName}' not found"
                     });
                     context.ExecutionPhase = ExecutionPhase.SceneNotFound;
@@ -241,6 +247,7 @@ internal sealed class DirectExecutionHandler : IExecutionModeHandler
                 sceneName: null,
                 message: string.Empty, // Empty - text already streamed
                 context: context,
+                modelName: modelName,
                 inputTokens: totalInputTokens,
                 outputTokens: totalOutputTokens,
                 cachedInputTokens: totalCachedInputTokens,
@@ -256,8 +263,14 @@ internal sealed class DirectExecutionHandler : IExecutionModeHandler
             yield return YieldAndTrack(context, new AiSceneResponse
             {
                 Status = AiResponseStatus.Running,
+                ModelName = modelName,
                 Message = responseText,
-                Contents = multiModalContents
+                Contents = multiModalContents,
+                InputTokens = totalInputTokens,
+                OutputTokens = totalOutputTokens,
+                CachedInputTokens = totalCachedInputTokens,
+                TotalTokens = (totalInputTokens ?? 0) + (totalOutputTokens ?? 0) + (totalCachedInputTokens ?? 0),
+                Cost = totalCost
             });
         }
         context.ExecutionPhase = ExecutionPhase.Completed;
