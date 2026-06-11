@@ -400,6 +400,60 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
             mainActorOutputs.Count, contextResult != null, _settings.Guardrails.Enabled, _factoryName);
     }
 
+    private async Task RefreshDynamicContextAsync(
+        SceneContext context,
+        CancellationToken cancellationToken)
+    {
+        if (_context == null)
+            return;
+
+        var contextSettings = new SceneRequestSettings { ConversationKey = context.ConversationKey };
+        var contextResult = await _context.RetrieveAsync(context, contextSettings, cancellationToken);
+        if (contextResult == null)
+            return;
+
+        var existingInitialContext = context.ConversationHistory
+            .FirstOrDefault(message => message.Label == "InitialContext")?
+            .Message
+            .Text;
+
+        context.BuildInitialContext(contextResult, ExtractSystemInstructions(existingInitialContext), _jsonService);
+
+        _logger.LogDebug("Dynamic context refreshed for cached conversation '{ConversationKey}' (Factory: {FactoryName})",
+            context.ConversationKey, _factoryName);
+    }
+
+    private static IEnumerable<string> ExtractSystemInstructions(string? initialContextText)
+    {
+        if (string.IsNullOrWhiteSpace(initialContextText))
+            return [];
+
+        var lines = initialContextText.Split('\n');
+        var instructions = new List<string>();
+        var inInstructionsSection = false;
+
+        foreach (var line in lines)
+        {
+            var trimmedLine = line.TrimEnd('\r');
+            if (!inInstructionsSection)
+            {
+                inInstructionsSection = string.Equals(trimmedLine, "[System Instructions]", StringComparison.Ordinal);
+                continue;
+            }
+
+            if (trimmedLine.StartsWith("- ", StringComparison.Ordinal))
+            {
+                instructions.Add(trimmedLine[2..]);
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(trimmedLine))
+                break;
+        }
+
+        return instructions;
+    }
+
     private async IAsyncEnumerable<AiSceneResponse> InitializePlayFrameworkAsync(SceneContext context,
         SceneRequestSettings settings,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -515,6 +569,11 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
             });
             context.ExecutionPhase = ExecutionPhase.Break;
             yield break;
+        }
+
+        if (loadedFromStorageOrCache)
+        {
+            await RefreshDynamicContextAsync(context, cancellationToken);
         }
 
         // Detect if we're resuming from a client interaction batch
