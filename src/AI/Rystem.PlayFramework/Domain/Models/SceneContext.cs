@@ -392,9 +392,9 @@ public sealed class SceneContext
         {
             message.MarkAsSummarized();
         }
-        AddUserMessage(InputMessage);
         // Add summary message (has Message flag, will be sent to LLM)
         ConversationHistory.Add(TrackedMessage.CreateSummaryMessage(summary));
+        AddUserMessage(InputMessage);
     }
 
     /// <summary>

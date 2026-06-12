@@ -406,6 +406,39 @@ public sealed class ConversationCacheTests
         Assert.Equal("User", context.ConversationHistory[3].Label);
     }
 
+    [Fact]
+    public void ApplySummary_ShouldPlaceSummaryBeforeCurrentUserInConversationAndLlmMessages()
+    {
+        // Arrange
+        var context = new SceneContext
+        {
+            ServiceProvider = null!,
+            Input = MultiModalInput.FromText("confermo"),
+            ChatClientManager = null!
+        };
+
+        context.BuildInitialContext(new { Now = "2026-06-11T17:04:50" }, ["Timesheet assistant"]);
+        context.AddUserMessage("Ho inserito 4 ore sul progetto Z dal 18 al 21 aprile.");
+        context.AddAssistantMessage(new ChatMessage(ChatRole.Assistant, "Vuoi confermare l'inserimento?"));
+        context.AddUserMessage(context.Input);
+
+        // Act
+        context.ApplySummary("L'utente ha inserito 4 ore sul progetto Z e ora sta confermando.");
+
+        // Assert
+        var summaryIndex = context.ConversationHistory.FindIndex(m => m.Label == "Summary");
+        var currentUserIndex = context.ConversationHistory.FindLastIndex(m => m.Label == "User" && m.IsActiveMessage);
+
+        Assert.True(summaryIndex >= 0);
+        Assert.True(currentUserIndex > summaryIndex);
+
+        var messagesForLlm = context.GetMessagesForLLM();
+        Assert.Equal(3, messagesForLlm.Count);
+        Assert.Contains("[Request Context]", messagesForLlm[0].Text);
+        Assert.Contains("[Previous conversation summary]", messagesForLlm[1].Text);
+        Assert.Equal("confermo", messagesForLlm[2].Text);
+    }
+
     #endregion
 
     #region Integration Tests (full pipeline with cache)
@@ -521,7 +554,148 @@ public sealed class ConversationCacheTests
         Assert.DoesNotContain(capturedMessages, m => m.Contains("Do not repeat already completed actions"));
     }
 
+    [Fact]
+    public async Task SecondTurn_WhenSummarizationRuns_ShouldSendSummaryBeforeCurrentUser()
+    {
+        // Arrange
+        var capturedMessages = new List<string>();
+        var services = new ServiceCollection();
+        services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Debug));
+        services.AddDistributedMemoryCache();
+        services.AddChatClient<CapturingMockChatClient>(name: null);
+        services.AddSingleton(capturedMessages);
+
+        services.AddPlayFramework(builder =>
+        {
+            builder.AddScene("TestScene", "A test scene", _ => { });
+            builder.AddCustomSummarizer<FixedSummarySummarizer>();
+            builder.WithSummarization(settings => settings.ResponseCountThreshold = 2);
+            builder.AddCache(cacheBuilder =>
+            {
+                cacheBuilder.WithDistributed().WithExpiration(TimeSpan.FromMinutes(5));
+            });
+        });
+
+        var serviceProvider = services.BuildServiceProvider();
+        var sceneManager = serviceProvider.GetRequiredService<ISceneManager>();
+
+        var conversationKey = Guid.NewGuid().ToString();
+        var settings = new SceneRequestSettings
+        {
+            ExecutionMode = SceneExecutionMode.Direct,
+            ConversationKey = conversationKey
+        };
+
+        await foreach (var _ in sceneManager.ExecuteAsync("Ho inserito 4 ore sul progetto Z", metadata: null, settings)) { }
+        capturedMessages.Clear();
+
+        // Act
+        await foreach (var _ in sceneManager.ExecuteAsync("confermo", metadata: null, settings)) { }
+
+        // Assert
+        var summaryIndex = capturedMessages.FindIndex(message => message.Contains("[Previous conversation summary]"));
+        var currentUserIndex = capturedMessages.FindIndex(message => message == "confermo");
+
+        Assert.True(summaryIndex >= 0);
+        Assert.True(currentUserIndex > summaryIndex);
+    }
+
+    [Fact]
+    public async Task SecondTurn_WithCachedConversation_ShouldRefreshInitialContext()
+    {
+        // Arrange
+        var capturedMessages = new List<string>();
+        var contextSequence = new SequentialContextState(
+            new ContextSnapshot("first", "2026-06-11T17:04:50"),
+            new ContextSnapshot("second", "2026-06-12T09:15:00"));
+
+        var services = new ServiceCollection();
+        services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Debug));
+        services.AddDistributedMemoryCache();
+        services.AddChatClient<CapturingMockChatClient>(name: null);
+        services.AddSingleton(capturedMessages);
+        services.AddSingleton(contextSequence);
+
+        services.AddPlayFramework(builder =>
+        {
+            builder.AddScene("TestScene", "A test scene", _ => { });
+            builder.AddMainActor("Always preserve this instruction");
+            builder.AddContext<SequentialContextProvider>();
+            builder.AddCache(cacheBuilder =>
+            {
+                cacheBuilder.WithDistributed().WithExpiration(TimeSpan.FromMinutes(5));
+            });
+        });
+
+        var serviceProvider = services.BuildServiceProvider();
+        var sceneManager = serviceProvider.GetRequiredService<ISceneManager>();
+
+        var conversationKey = Guid.NewGuid().ToString();
+        var settings = new SceneRequestSettings
+        {
+            ExecutionMode = SceneExecutionMode.Direct,
+            ConversationKey = conversationKey
+        };
+
+        await foreach (var _ in sceneManager.ExecuteAsync("Primo turno", metadata: null, settings)) { }
+        capturedMessages.Clear();
+
+        // Act
+        await foreach (var _ in sceneManager.ExecuteAsync("Secondo turno", metadata: null, settings)) { }
+
+        // Assert
+        Assert.Equal(2, contextSequence.CallCount);
+
+        var initialContext = Assert.Single(capturedMessages, message => message.Contains("[Request Context]"));
+        Assert.Contains("\"marker\":\"second\"", initialContext);
+        Assert.DoesNotContain("\"marker\":\"first\"", initialContext);
+        Assert.Contains("Always preserve this instruction", initialContext);
+    }
+
     #endregion
+}
+
+internal sealed class FixedSummarySummarizer : ISummarizer
+{
+    public bool ShouldSummarize(List<AiSceneResponse> responses) => true;
+
+    public Task<string> SummarizeAsync(List<AiSceneResponse> responses, CancellationToken cancellationToken = default)
+        => Task.FromResult("Summary generated for cached conversation.");
+}
+
+internal sealed record ContextSnapshot(string Marker, string Now);
+
+internal sealed class SequentialContextState
+{
+    private readonly Queue<ContextSnapshot> _snapshots;
+
+    public SequentialContextState(params ContextSnapshot[] snapshots)
+    {
+        _snapshots = new Queue<ContextSnapshot>(snapshots);
+    }
+
+    public int CallCount { get; private set; }
+
+    public ContextSnapshot Next()
+    {
+        CallCount++;
+        return _snapshots.TryDequeue(out var snapshot)
+            ? snapshot
+            : throw new InvalidOperationException("No more context snapshots available for the test.");
+    }
+}
+
+internal sealed class SequentialContextProvider : IContext
+{
+    private readonly SequentialContextState _state;
+
+    public SequentialContextProvider(SequentialContextState state)
+    {
+        _state = state;
+    }
+
+    public Task<object?> RetrieveAsync(SceneContext context, SceneRequestSettings settings, CancellationToken cancellationToken)
+        => Task.FromResult<object?>(_state.Next());
 }
 
 /// <summary>
