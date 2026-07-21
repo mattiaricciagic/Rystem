@@ -18,6 +18,16 @@ dotnet add package Rystem.PlayFramework.Adapters
 
 If you want HTTP endpoints, the HTTP mapping extensions live in this package under the `Rystem.PlayFramework.Api` namespace. There is no separate `Rystem.PlayFramework.Api` library package in this repo.
 
+## Documentation
+
+- [Runtime scene and tool descriptions](Docs/RUNTIME_DESCRIPTIONS.md): public API, refresh modes, providers, resilience, observability, testing, and operational tradeoffs.
+- [Factory pattern](Docs/FACTORY_PATTERN.md)
+- [Dynamic chaining](Docs/DYNAMIC_CHAINING.md)
+- [Client interactions](Docs/CLIENT_INTERACTION_ARCHITECTURE_V2.md)
+- [Telemetry](Docs/TELEMETRY.md)
+- [RAG integration](Docs/RAG_INTEGRATION.md)
+- [MCP integration](Docs/MCP_INTEGRATION.md)
+
 ## Architecture
 
 The core entry points are:
@@ -36,6 +46,56 @@ The lifecycle is:
 5. execute through `ISceneManager.ExecuteAsync(...)` or the HTTP API
 
 Each PlayFramework instance is factory-based. The name can be a `string` or `Enum`, and resolution happens through `IFactory<ISceneManager>` or the `IPlayFramework` wrapper.
+
+## Runtime scene and tool descriptions
+
+Available from `10.0.11-beta.22`. See the [complete runtime descriptions guide](Docs/RUNTIME_DESCRIPTIONS.md) for every overload and operational setting.
+
+Scene and local-tool descriptions can be resolved from application services and refreshed without rebuilding the PlayFramework container. The runtime values are global to the named PlayFramework factory: they must not depend on the current user, tenant, conversation, or request payload.
+
+```csharp
+builder.Services.AddScoped<IAiPromptSnapshot, AiPromptSnapshot>();
+
+builder.Services.AddPlayFramework("default", framework =>
+{
+    framework.WithRuntimeDescriptions(settings =>
+    {
+        settings.RefreshMode = RuntimeDescriptionRefreshMode.Background;
+        settings.BackgroundRefreshInterval = TimeSpan.FromMinutes(5);
+        settings.ConsistencyMode = RuntimeDescriptionConsistencyMode.Execution;
+        settings.FailureMode = RuntimeDescriptionFailureMode.UseFallback;
+        settings.SnapshotStoreMode = RuntimeDescriptionSnapshotStoreMode.Memory;
+    });
+
+    framework.AddScene(
+        "orders",
+        async (context, cancellationToken) =>
+            await context.Services.GetRequiredService<IAiPromptSnapshot>()
+                .GetSceneDescriptionAsync(cancellationToken),
+        scene => scene.WithService<IOrderService>(tools => tools.WithMethod(
+            service => service.SearchAsync(default!, default),
+            "search_orders",
+            async (context, cancellationToken) =>
+                await context.Services.GetRequiredService<IAiPromptSnapshot>()
+                    .GetSearchToolDescriptionAsync(cancellationToken),
+            fallbackDescription: "Search orders")),
+        fallbackDescription: "Order management");
+});
+```
+
+Every refresh uses one DI scope and resolves all descriptions sequentially into a complete immutable catalog. A successful changed catalog is persisted as last-known-good and then published atomically; requests see either the previous catalog or the new one, never a partial mixture. Use a scoped snapshot accessor, as above, when several delegates read the same remote document.
+
+The refresh modes are:
+
+- `Background` (default): startup, timer, and an optional registered `IRuntimeDescriptionChangeTokenSource` refresh outside the normal request path.
+- `Manual`: resolve `IFactory<IRuntimeDescriptionRefresher>`, call `Create(factoryName).RefreshAsync()`, and use its structured result as a deployment or evaluation barrier.
+- `EveryRequest`: force one request-local resolution for deterministic tests and diagnostics. This deliberately adds provider latency and allocation cost to every request and should normally stay disabled in production.
+
+For restart resilience, `Memory` is the default snapshot store. `Distributed` uses the host's `IDistributedCache`; `AddRuntimeDescriptionSnapshotStore<TStore>()` can provide stronger storage semantics. `AiSceneResponse.RuntimeDescriptions` and `SceneContext.RuntimeSceneCatalog` expose the exact request-local identity and declarations used by execution. Discovery only reports the current global catalog and never triggers a refresh.
+
+The central drawback is duplication of lifecycle and memory: static `ISceneFactory` values remain startup templates/fallbacks, while runtime execution uses versioned materialized catalogs. Each semantic description change recreates scene/tool declarations, historical pinning consumes bounded retention, and fallback improves availability at the risk of using stale descriptions. The feature therefore trades additional state, observability, and operational choices for hot reload; applications that do not configure dynamic descriptions retain the static path and behavior.
+
+Names, tool schemas, parameter descriptions, MCP definitions, and actor messages are not part of this catalog. Runtime description sources are privileged prompt configuration: protect write access, never select them from client input, and expose manual refresh only through an authenticated, authorized, rate-limited application endpoint if one is needed.
 
 ## Example: minimal HTTP backend
 
@@ -1484,6 +1544,13 @@ All possible values of `AiResponseStatus`:
 | `Unauthorized` | `IAuthorizationLayer` rejected the request |
 | `Timeout` | Server-side timeout expired; synthetic SSE item emitted if stream was already open |
 | `RateLimited` | Rate limit exceeded (e.g. `RejectOnExceeded` or a `BeforeExecution` hook) |
+
+Per-tool `FunctionRequest`, `FunctionCompleted`, and tool-related `Error` items
+populate `FunctionName` and `FunctionArguments`. The latter is a valid JSON
+document and is `"{}"` for a call without arguments. An aggregate
+`FunctionRequest` that only reports the number of calls has neither field.
+Because tool arguments can contain sensitive data, do not log the raw value by
+default.
 
 ## Important caveats
 

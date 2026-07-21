@@ -1,402 +1,270 @@
-# Tool Calling Implementation in PlayFramework
+# Tool calling in PlayFramework
 
-## Overview
+Tool calling is the mechanism by which PlayFramework exposes C# methods, HTTP endpoints, MCP servers, and client-side functions to the language model. The model selects and invokes tools; PlayFramework executes them and feeds the results back into the conversation.
 
-PlayFramework now includes **full tool calling support**, enabling AI agents to dynamically call C# methods as functions during conversation flow. This implementation bridges the gap between Azure OpenAI's function calling capabilities and the PlayFramework's scene-based orchestration.
+## Tool types
 
-## Architecture
+| Type | Registration | Description |
+|---|---|---|
+| Service tool | `WithService<T>(tools => ...)` | C# service methods resolved from DI |
+| Endpoint tool | `WithEndpoint<TClient>(ep => ...)` | HTTP actions via named `IHttpClientFactory` |
+| MCP tool | `WithMcpServer(name)` | External MCP server (tools fetched at runtime) |
+| Client tool | `OnClient(client => ...)` | Browser or mobile functions (bidirectional) |
 
-### Components
+All four types appear in `AiSceneResponse.FunctionName` / `FunctionArguments` and in the discovery endpoint.
 
-1. **AzureOpenAIChatClientAdapter** (`Test\Infrastructure\AzureOpenAIChatClientAdapter.cs`)
-   - Bridges Azure.AI.OpenAI SDK with Microsoft.Extensions.AI.IChatClient
-   - Converts AIFunction → ChatTool for Azure OpenAI
-   - Parses ChatCompletion → FunctionCallContent with JSON argument deserialization
-   - Handles both text responses and function calls in same response
+## Service tools
 
-2. **SceneManager Tool Execution** (`Services\SceneManager.cs`)
-   - **RequestAsync**: Scene selection via function calling
-   - **ExecuteSceneAsync**: Multi-turn conversation loop with tool execution
-
-3. **ServiceMethodTool** (`Services\Tools\ServiceMethodTool.cs`)
-   - Wraps C# methods as ISceneTool
-   - Converts method signature → AIFunction using AIFunctionFactory
-   - Executes methods via reflection with JSON argument deserialization
-
-## How It Works
-
-### 1. Tool Registration
-
-Tools are registered via fluent API during scene configuration:
+Register typed service methods on a scene using `WithService<TService>`:
 
 ```csharp
-services.AddPlayFramework(options => { })
-    .AddScene("Calculator", "Performs mathematical calculations")
-    .WithService<ICalculatorService>(tool =>
-    {
-        tool.WithMethod(x => x.Add(default, default), "Add", "Adds two numbers");
-        tool.WithMethod(x => x.Multiply(default, default), "Multiply", "Multiplies two numbers");
-    });
-```
+builder.Services.AddSingleton<ICalculatorService, CalculatorService>();
 
-### 2. Scene Selection Flow (RequestAsync)
-
-**Step 1**: User sends a request → "What is 15 + 27?"
-
-**Step 2**: SceneManager calls LLM with all available scenes as tools:
-```csharp
-var sceneTools = _sceneFactory.GetSceneNames()
-    .Select(name => _sceneFactory.Create(name))
-    .Select(scene => CreateSceneSelectionTool(scene))
-    .ToList();
-
-var chatOptions = new ChatOptions { Tools = sceneTools.Cast<AITool>().ToList() };
-var response = await context.ChatClient.GetResponseAsync(new[] { userMessage }, chatOptions, ct);
-```
-
-**Step 3**: LLM responds with FunctionCallContent indicating selected scene:
-```json
+builder.Services.AddPlayFramework("default", framework =>
 {
-  "callId": "call_123",
-  "name": "Calculator",
-  "arguments": {}
-}
-```
-
-**Step 4**: SceneManager extracts scene name and executes the scene:
-```csharp
-if (content is FunctionCallContent functionCall)
-{
-    var selectedSceneName = functionCall.Name;
-    var scene = FindSceneByFuzzyMatch(selectedSceneName);
-    await foreach (var sceneResponse in ExecuteSceneAsync(context, scene, ct))
-    {
-        yield return sceneResponse;
-    }
-}
-```
-
-### 3. Tool Execution Loop (ExecuteSceneAsync)
-
-**Step 1**: Scene actors are executed to provide dynamic context:
-```csharp
-await scene.ExecuteActorsAsync(context, cancellationToken);
-```
-
-**Step 2**: Scene tools are registered with ChatClient:
-```csharp
-var sceneTools = scene.GetTools().ToList();
-var chatOptions = new ChatOptions 
-{ 
-    Tools = sceneTools.Select(t => t.ToAIFunction()).Cast<AITool>().ToList() 
-};
-```
-
-**Step 3**: Multi-turn conversation loop (max 10 iterations):
-
-```csharp
-while (iteration < MaxToolCallIterations)
-{
-    // Call LLM
-    var response = await context.ChatClient.GetResponseAsync(conversationMessages, chatOptions, ct);
-    
-    // Check for function calls
-    var functionCalls = responseMessage.Contents?.OfType<FunctionCallContent>().ToList();
-    
-    if (functionCalls.Count == 0)
-    {
-        // No more function calls → return final text response
-        yield return finalResponse;
-        yield break;
-    }
-    
-    // Execute each function call
-    foreach (var functionCall in functionCalls)
-    {
-        var tool = sceneTools.FirstOrDefault(t => t.Name == functionCall.Name);
-        
-        // Serialize arguments
-        var argsJson = JsonSerializer.Serialize(functionCall.Arguments);
-        
-        // Execute tool
-        var toolResult = await tool.ExecuteAsync(argsJson, context, ct);
-        
-        // Send result back to LLM
-        var functionResult = new FunctionResultContent(functionCall.CallId, functionCall.Name) 
-        { 
-            Result = toolResult 
-        };
-        conversationMessages.Add(new ChatMessage(ChatRole.Tool, [functionResult]));
-    }
-    
-    // Loop continues → LLM processes tool results and may call more tools or return final answer
-}
-```
-
-### 4. Example Flow: Calculator Request
-
-**User Request**: "What is 15 + 27?"
-
-**Execution Steps**:
-
-1. **Scene Selection**:
-   - LLM receives: User message + Scene tools (Calculator, Weather, Database, etc.)
-   - LLM calls: `Calculator()` function
-   - SceneManager executes: Calculator scene
-
-2. **Tool Execution (Iteration 1)**:
-   - LLM receives: User message + Calculator tools (Add, Subtract, Multiply, Divide)
-   - LLM calls: `Add(a: 15, b: 27)`
-   - ServiceMethodTool executes: `calculatorService.Add(15, 27)`
-   - Tool returns: `"42"`
-   - Function result sent back to LLM
-
-3. **Final Response (Iteration 2)**:
-   - LLM receives: Tool result "42"
-   - LLM responds: "The result of 15 + 27 is 42."
-   - No more function calls → Execution completes
-
-**Response Stream**:
-```
-1. Status: ExecutingScene, Message: "Entering scene: Calculator"
-2. Status: FunctionRequest, Message: "Executing tool: Add"
-3. Status: FunctionCompleted, Message: "Tool Add executed: 42", FunctionName: "Add"
-4. Status: Running, Message: "The result of 15 + 27 is 42."
-5. Status: Completed
-```
-
-## Key Features
-
-### ✅ Multi-Turn Tool Calling
-The implementation supports multiple rounds of tool execution:
-```
-User: "Calculate (10 + 5) * 3"
-→ LLM calls Add(10, 5) → Returns 15
-→ LLM calls Multiply(15, 3) → Returns 45
-→ LLM responds: "The result is 45"
-```
-
-### ✅ Error Handling
-Robust error handling for tool execution failures:
-```csharp
-try
-{
-    var toolResult = await tool.ExecuteAsync(argsJson, context, ct);
-    // Send success result
-}
-catch (Exception ex)
-{
-    var errorResult = new FunctionResultContent(callId, name) 
-    { 
-        Result = $"Error executing tool: {ex.Message}" 
-    };
-    // LLM receives error and can retry or respond with error message
-}
-```
-
-### ✅ Tool Tracking
-Prevents infinite loops and tracks executed tools:
-```csharp
-var toolKey = $"{scene.Name}.{functionCall.Name}";
-context.ExecutedTools.Add(toolKey);
-```
-
-### ✅ Response Streaming
-All tool execution steps are streamed via `IAsyncEnumerable<AiSceneResponse>`:
-```csharp
-await foreach (var response in sceneManager.ExecuteAsync(request, ct))
-{
-    Console.WriteLine($"[{response.Status}] {response.Message}");
-    if (response.FunctionName != null)
-        Console.WriteLine($"  Function: {response.FunctionName}");
-}
-```
-
-## Testing
-
-### Unit Tests (MockChatClient)
-12 unit tests validate core functionality without real LLM:
-```bash
-dotnet test src\AI\Test\Rystem.PlayFramework.Test\Rystem.PlayFramework.Test.csproj
-```
-
-### Integration Tests (Azure OpenAI)
-4 integration tests validate real Azure OpenAI tool calling:
-
-1. **AzureOpenAI_ShouldConnect**: Validates Azure OpenAI connectivity
-2. **PlayFramework_WithAzureOpenAI_ShouldExecuteCalculation**: Tests "15 + 27" with tool calling
-3. **PlayFramework_WithAzureOpenAI_ShouldHandleMultipleOperations**: Tests "(10 + 5) * 3" with multiple tool calls
-4. **PlayFramework_ShouldTrackCostsAccurately**: Validates token and cost tracking
-
-To run integration tests:
-1. Configure user secrets (see `README_TESTING.md`)
-2. Remove `[Skip]` attributes from tests
-3. Run: `dotnet test --filter "FullyQualifiedName~AzureOpenAIIntegrationTests"`
-
-## Configuration
-
-### User Secrets (for testing)
-```json
-{
-  "OpenAi": {
-    "ApiKey": "your-azure-openai-key",
-    "EndpointBase": "your-resource-name",
-    "ModelName": "gpt-4"
-  }
-}
-```
-
-### Production Configuration
-```csharp
-// Register Azure OpenAI Chat Client
-services.AddSingleton<IChatClient>(sp => 
-    new AzureOpenAIChatClientAdapter(
-        endpoint: "https://your-resource.openai.azure.com/",
-        apiKey: configuration["AzureOpenAI:ApiKey"],
-        deploymentName: "gpt-4"));
-
-// Register PlayFramework
-services.AddPlayFramework(options => 
-{
-    options.Planning.EnablePlanning = true;
-    options.Cache.EnableCaching = true;
-})
-.AddScene("Calculator", "Performs mathematical calculations")
-    .WithService<ICalculatorService>(tool =>
-    {
-        tool.WithMethod(x => x.Add(default, default), "Add", "Adds two numbers");
-        tool.WithMethod(x => x.Multiply(default, default), "Multiply", "Multiplies two numbers");
-    });
-```
-
-## API Reference
-
-### FunctionCallContent
-Represents a function call from the LLM:
-```csharp
-public class FunctionCallContent : AIContent
-{
-    public string CallId { get; }           // Unique call identifier
-    public string Name { get; }             // Function/tool name
-    public IDictionary<string, object?> Arguments { get; }  // Parsed JSON arguments
-}
-```
-
-### FunctionResultContent
-Represents the result sent back to the LLM:
-```csharp
-public class FunctionResultContent : AIContent
-{
-    public FunctionResultContent(string callId, string name);
-    public string CallId { get; }           // Matches FunctionCallContent.CallId
-    public string Name { get; }             // Function/tool name
-    public object? Result { get; set; }     // Serialized result (string, JSON, etc.)
-}
-```
-
-### AiSceneResponse (Enhanced)
-```csharp
-public sealed class AiSceneResponse
-{
-    public AiResponseStatus Status { get; set; }        // Current status
-    public string? SceneName { get; set; }              // Scene being executed
-    public string? FunctionName { get; set; }           // Function/tool called
-    public string? Message { get; set; }                // Response message
-    public string? ErrorMessage { get; set; }           // Error details
-    public int? InputTokens { get; set; }               // Tokens used
-    public int? OutputTokens { get; set; }              // Tokens generated
-    public decimal? Cost { get; set; }                  // Cost for this operation
-    public decimal TotalCost { get; set; }              // Total accumulated cost
-}
-```
-
-### AiResponseStatus (Relevant Values)
-```csharp
-public enum AiResponseStatus
-{
-    FunctionRequest,      // About to execute a tool
-    FunctionCompleted,    // Tool execution succeeded
-    Running,              // Normal execution (text response)
-    Error,                // Error occurred
-    Completed             // Execution finished
-}
-```
-
-## Performance Considerations
-
-### Token Optimization
-- **Caching**: Enable caching to avoid re-executing identical tool calls
-- **Summarization**: Enable summarization to compress long conversation histories
-- **Max Iterations**: Default limit of 10 tool call iterations prevents runaway costs
-
-### Cost Tracking
-Every response includes token counts and estimated costs:
-```csharp
-response.InputTokens = completion.Usage.InputTokenCount;
-response.OutputTokens = completion.Usage.OutputTokenCount;
-response.Cost = CalculateCost(inputTokens, outputTokens, modelName);
-response.TotalCost = context.TotalCost; // Accumulated across entire execution
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**Issue**: Tool not found during execution
-```
-Status: Error, Message: "Tool 'Add' not found"
-```
-**Solution**: Ensure tool is registered in scene:
-```csharp
-.WithService<ICalculatorService>(tool =>
-{
-    tool.WithMethod(x => x.Add(default, default), "Add", "Adds two numbers");
+    framework
+        .WithChatClient("default")
+        .AddScene("Calculator", "Arithmetic operations", scene =>
+        {
+            scene.WithService<ICalculatorService>(tools =>
+            {
+                tools
+                    .WithMethod<double>(x => x.Add(default, default), "Add", "Add two numbers")
+                    .WithMethod<double>(x => x.Multiply(default, default), "Multiply", "Multiply two numbers")
+                    .WithMethod<double>(x => x.Subtract(default, default), "Subtract", "Subtract two numbers");
+            });
+        });
 });
 ```
 
-**Issue**: Arguments deserialization fails
+The expression `x => x.Add(default, default)` extracts the `MethodInfo` from the lambda at startup. `default` arguments are ignored; only the method signature matters. Tool names are normalized (spaces and hyphens become underscores).
+
+## Endpoint tools
+
+Use `WithEndpoint<TClient>` to expose an HTTP service as a set of AI-callable actions. Register the named HTTP client on the PlayFramework builder first:
+
+```csharp
+builder.Services.AddPlayFramework("default", framework =>
+{
+    framework
+        .WithChatClient("default")
+        .WithHttpClient<IOrderServiceClient>(c =>
+        {
+            c.BaseAddress = new Uri("http://order-service:5001/api");
+        })
+        .AddScene("Orders", "Order management", scene =>
+        {
+            scene.WithEndpoint<IOrderServiceClient>(ep => ep
+                .WithAction<Order>(
+                    "GetOrder",
+                    HttpMethod.Get,
+                    "/orders/{orderId}",
+                    "Retrieve an order by its ID")
+                .WithAction<CreateOrderRequest, Order>(
+                    "CreateOrder",
+                    HttpMethod.Post,
+                    "/orders",
+                    "Create a new order")
+                .WithAction<PagedResult<Order>>(
+                    "ListOrders",
+                    HttpMethod.Get,
+                    "/orders",
+                    "List all orders")
+                .WithParameter("status", "Filter by order status"));
+        });
+});
 ```
-Status: Error, Message: "Error executing tool: Cannot deserialize arguments"
+
+Route template placeholders (`{orderId}`) are automatically exposed as required AI parameters. Optional query parameters are added with `.WithParameter(...)`.
+
+## MCP tools
+
+Connect a scene to a registered MCP server:
+
+```csharp
+builder.Services.AddPlayFramework("default", framework =>
+{
+    framework
+        .WithChatClient("default")
+        .AddScene("Dev Tools", "Development utilities", scene =>
+        {
+            scene.WithMcpServer("mcp-server-name");
+        });
+});
 ```
-**Solution**: Ensure method parameters match function call arguments. Check argument types in function description.
 
-**Issue**: Max iterations reached
+The MCP server name must match a registered `IMcpServerManager` factory entry. MCP tools are fetched at runtime from the server's tool list and are merged with any other scene tools.
+
+## Client tools
+
+`OnClient(...)` asks the browser or mobile client to execute something locally, then resume the conversation with the result:
+
+```csharp
+builder.Services.AddPlayFramework("default", framework =>
+{
+    framework
+        .WithChatClient("default")
+        .AddCache(cache => cache.WithMemory().WithExpiration(TimeSpan.FromMinutes(10)))
+        .AddScene("Browser Assistant", "Needs browser-side tools", scene =>
+        {
+            scene.OnClient(client =>
+            {
+                client
+                    .AddTool("getCurrentLocation", "Get the user's current location", timeoutSeconds: 15)
+                    .AddCommand("trackAnalytics", "Track an analytics event", timeoutSeconds: 5);
+            });
+        });
+});
 ```
-Status: Error, Message: "Maximum tool call iterations (10) reached"
+
+When the model calls a client tool, PlayFramework:
+1. yields a `ClientInteraction` status response carrying the tool call
+2. pauses the conversation in cache
+3. waits for the client to send back `clientInteractionResults` with a `conversationKey`
+
+## Execution loop
+
+The multi-turn tool execution loop runs inside each scene:
+
+1. scene actors execute to inject dynamic system messages
+2. all scene tools are registered with the chat client options
+3. the model is called; if it returns tool calls, each tool is executed and the result is fed back
+4. the loop repeats until the model returns a text-only response or reaches the iteration limit
+5. every step yields an `AiSceneResponse` item into the stream
+
+```csharp
+await foreach (var step in sceneManager.ExecuteAsync("What is 12 * 7?", settings: settings))
+{
+    // step.Status can be: ExecutingScene, FunctionRequest, FunctionCompleted,
+    //                      Running, Completed, Error, BudgetExceeded, ...
+    Console.WriteLine($"[{step.Status}] {step.Message}");
+
+    if (step.FunctionName is not null)
+    {
+        // step.FunctionArguments is always valid JSON (or "{}") when FunctionName is set
+        Console.WriteLine($"  Tool: {step.FunctionName}, Args: {step.FunctionArguments}");
+    }
+}
 ```
-**Solution**: 
-- Check if tools are returning useful results to the LLM
-- Verify tool descriptions are clear and unambiguous
-- Consider increasing MaxToolCallIterations if genuinely needed
 
-**Issue**: Azure OpenAI returns error
+## FunctionArguments in responses
+
+Starting with `10.0.11-beta.23`, `AiSceneResponse.FunctionArguments` is populated for every per-tool event:
+
+- `FunctionRequest` (tool is about to be called)
+- `FunctionCompleted` (tool result returned to the model)
+- per-tool error events
+
+When `FunctionName` is non-null, `FunctionArguments` is a valid JSON document. A call with no parameters produces `"{}"`, never `null`.
+
+PlayFramework also emits an aggregate `FunctionRequest` item when the model returns multiple tool calls at once. That item has `FunctionName = null` and `FunctionArguments = null`; it should not be treated as an individual tool call.
+
+```csharp
+var toolEvents = responses.Where(r =>
+    r.FunctionName is not null &&
+    r.Status is AiResponseStatus.FunctionRequest or AiResponseStatus.FunctionCompleted);
+
+foreach (var ev in toolEvents)
+{
+    using var doc = JsonDocument.Parse(ev.FunctionArguments!);
+    // ev.FunctionName identifies the tool; doc.RootElement contains the arguments
+}
 ```
-Status: Error, Message: "Azure OpenAI API error: 401 Unauthorized"
+
+## Runtime descriptions for tool descriptions
+
+Tool descriptions can be resolved from application services at runtime, without rebuilding the DI container. This requires `WithRuntimeDescriptions(...)` on the PlayFramework builder.
+
+See [RUNTIME_DESCRIPTIONS.md](RUNTIME_DESCRIPTIONS.md) for the complete reference. Quick example:
+
+```csharp
+services.AddScoped<IAiPromptSnapshot, AiPromptSnapshot>();
+
+services.AddPlayFramework("default", framework =>
+{
+    framework.WithRuntimeDescriptions(settings =>
+    {
+        settings.RefreshMode = RuntimeDescriptionRefreshMode.Background;
+        settings.BackgroundRefreshInterval = TimeSpan.FromMinutes(5);
+    });
+
+    framework.AddScene(
+        "orders",
+        async (ctx, ct) => await ctx.Services
+            .GetRequiredService<IAiPromptSnapshot>()
+            .GetSceneDescriptionAsync(ct),
+        scene => scene.WithService<IOrderService>(tools => tools.WithMethod(
+            svc => svc.SearchAsync(default!, default),
+            "search_orders",
+            async (ctx, ct) => await ctx.Services
+                .GetRequiredService<IAiPromptSnapshot>()
+                .GetSearchToolDescriptionAsync(ct),
+            fallbackDescription: "Search orders")),
+        fallbackDescription: "Manage orders");
+});
 ```
-**Solution**: 
-- Verify API key is correct in user secrets or configuration
-- Check endpoint URL format: `https://your-resource.openai.azure.com/`
-- Ensure model deployment name matches configured value
 
-## Future Enhancements
+The same three async overloads are available for `ServiceToolBuilder.WithMethod`, `EndpointToolBuilder.WithAction`, and `ClientInteractionBuilder.AddTool` / `AddCommand`.
 
-- [ ] **Parallel tool execution**: Execute multiple independent tool calls concurrently
-- [ ] **Streaming tool results**: Stream partial tool results back to LLM
-- [ ] **Tool call caching**: Cache tool results by arguments hash
-- [ ] **Dynamic tool registration**: Allow tools to be added/removed during execution
-- [ ] **MCP integration**: Support Model Context Protocol for external tool providers
-- [ ] **Cost limits**: Abort execution when cost threshold exceeded
-- [ ] **Rate limiting**: Throttle tool execution to prevent API overload
+## Forcing specific tools
 
-## References
+Use `SceneRequestSettings.ForcedTools` to expose only a subset of tools to the model for a request:
 
-- **Microsoft.Extensions.AI Documentation**: https://learn.microsoft.com/en-us/dotnet/api/microsoft.extensions.ai
-- **Azure OpenAI Function Calling**: https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/function-calling
-- **PlayFramework Testing Guide**: [README_TESTING.md](../Test/Rystem.PlayFramework.Test/README_TESTING.md)
+```csharp
+var settings = new SceneRequestSettings
+{
+    ExecutionMode = SceneExecutionMode.Scene,
+    SceneName = "Calculator",
+    ForcedTools =
+    [
+        new ForcedToolRequest
+        {
+            SceneName = "Calculator",
+            ToolName = "Add",
+            SourceType = PlayFrameworkToolSourceType.Service,
+            SourceName = "ICalculatorService",
+            MemberName = "Add"
+        }
+    ]
+};
+```
 
----
+Supported `SourceType` values: `Service`, `Client`, `Mcp`, `Endpoint`, `Other`.
 
-**Implementation Date**: January 2026  
-**Framework Version**: Rystem.PlayFramework 10.1.0.beta-1  
-**Azure OpenAI SDK**: 2.1.0  
-**Microsoft.Extensions.AI**: 10.3.0
+If a forced tool is not found in the scene, execution stops with an error response. When exactly one forced tool remains pending, PlayFramework sets `ChatToolMode` to force that tool call.
+
+## Auto-generated description from tools
+
+`WithDescriptionFromTools()` on a scene builder makes PlayFramework append the normalized tool names to the scene description automatically. Useful when you want the LLM to have a richer routing hint without writing a manual description:
+
+```csharp
+scene.WithDescriptionFromTools();
+```
+
+## Discovery
+
+The discovery endpoint lists all registered tools grouped by source:
+
+```
+GET /api/ai/{factoryName}/discovery
+```
+
+Each tool entry includes `sceneName`, `toolName`, `description`, `sourceType`, `sourceName`, and `memberName`. Use discovery to build a tool picker UI and then supply the selected values to `ForcedTools`.
+
+When runtime descriptions are active, each scene in the discovery response includes `IsRuntimeResolved`, `RuntimeDescriptionCatalogId`, and `RuntimeDescriptionVersion`. Discovery reads the current globally published catalog and does not trigger a refresh.
+
+## Response fields for tool events
+
+| Field | Present when | Description |
+|---|---|---|
+| `FunctionName` | per-tool event | normalized tool name |
+| `FunctionArguments` | `FunctionName != null` | valid JSON, `"{}"` for no-arg calls |
+| `SceneName` | execution events | scene being executed |
+| `Status` | always | `FunctionRequest`, `FunctionCompleted`, `Running`, `Completed`, `Error`, … |
+| `InputTokens` | LLM calls | input tokens used |
+| `OutputTokens` | LLM calls | output tokens generated |
+| `CachedInputTokens` | LLM calls | cached input tokens (prompt cache hits) |
+| `Cost` | LLM calls (when adapter has pricing) | cost of this call |
+| `TotalCost` | always | cumulative cost across the request |
+| `ModelName` | LLM calls | model/deployment used for this call |
+| `RuntimeDescriptions` | first execution response | catalog identity and acquisition details |

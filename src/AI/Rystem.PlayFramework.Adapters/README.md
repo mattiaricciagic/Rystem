@@ -74,6 +74,21 @@ builder.Services.AddAdapterForAzureOpenAI("default", settings =>
 | `AudioMode` | `None`, `MultiModal`, or `SpeechToText` |
 | `SpeechToTextDeployment` | required when `AudioMode` is `SpeechToText` |
 
+## Runtime tool declarations
+
+Starting with `10.0.11-beta.22`, the adapter is compatible with the declaration-only
+`AIFunctionDeclaration` instances published by PlayFramework when scene and local-tool
+descriptions are refreshed at runtime. Name, description, and JSON Schema are forwarded
+to Azure OpenAI through the official `Microsoft.Extensions.AI.OpenAI` bridge.
+
+This applies to both adapter modes:
+
+- Chat Completions (`UseResponsesApi = false`)
+- Responses API (`UseResponsesApi = true`)
+
+Declaration-only tools describe routing and callable tools to the model; PlayFramework
+keeps the executable function separately and invokes it after receiving the tool call.
+
 ## File upload behavior
 
 When both of these are true:
