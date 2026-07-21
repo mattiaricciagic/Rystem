@@ -62,12 +62,13 @@ internal sealed class DefaultSummarizer : ISummarizer
         var startTime = DateTime.UtcNow;
         _logger.LogInformation("Starting summarization of {Count} responses", responses.Count);
 
-        // Build conversation history (including multi-modal content info)
+        // Build conversation history (including scene routing context and multi-modal content info)
         var conversationText = string.Join("\n\n", responses
             .Where(r => !string.IsNullOrEmpty(r.Message))
             .Select(r =>
             {
-                var text = $"[{r.Status}] {r.Message}";
+                var scenePrefix = !string.IsNullOrEmpty(r.SceneName) ? $"[Scene: {r.SceneName}] " : string.Empty;
+                var text = $"{scenePrefix}[{r.Status}] {r.Message}";
                 var multiModalCount = r.Contents?.Count(c => c is DataContent or UriContent) ?? 0;
                 if (multiModalCount > 0)
                 {
@@ -76,10 +77,19 @@ internal sealed class DefaultSummarizer : ISummarizer
                 return text;
             }));
 
+        // Surface the active scene explicitly so it survives the summary and downstream routing
+        // can stay on the same operational flow instead of drifting after a summarization event.
+        var activeScene = responses
+            .Select(r => r.SceneName)
+            .LastOrDefault(name => !string.IsNullOrEmpty(name));
+        var activeSceneInstruction = !string.IsNullOrEmpty(activeScene)
+            ? $" The conversation is currently operating within the '{activeScene}' scene/flow; preserve this active scene explicitly in the summary."
+            : string.Empty;
+
         // Create summarization prompt
         var messages = new List<ChatMessage>
         {
-            new(ChatRole.System, "You are a conversation summarizer. Summarize the following conversation history, preserving all important information, data, and context."),
+            new(ChatRole.System, "You are a conversation summarizer. Summarize the following conversation history, preserving all important information, data, and context." + activeSceneInstruction),
             new(ChatRole.User, $"Summarize this conversation:\n\n{conversationText}")
         };
 

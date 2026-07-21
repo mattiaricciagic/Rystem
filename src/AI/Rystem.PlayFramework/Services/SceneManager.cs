@@ -770,17 +770,44 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
         }
 
         // Check if summarization needed for loaded data
-        if (_settings.Cache.Enabled && context.ConversationKey != null)
+        if (_settings.Cache.Enabled
+            && context.ConversationKey != null
+            && _summarizer != null
+            && settings.EnableSummarization)
         {
             var messagesToResume = context.GetMessagesForResume();
-            if (_summarizer != null && messagesToResume.Count > _settings.Summarization.ResponseCountThreshold)
+
+            // Determine the currently active scene (if any) so the summary can preserve
+            // routing context. The messages eligible for resume (User/Assistant/Tool) do not
+            // carry scene information in their Label, so we derive it from, in order:
+            //  1. the scene currently executing (interrupted mid-scene resume),
+            //  2. the last scene executed in this (live) request,
+            //  3. the last scene referenced by scene-scoped messages restored from cache
+            //     (SceneActor:/McpContext:). This last fallback is the only reliable signal
+            //     across separate turns, since execution state is not restored once a turn
+            //     has completed.
+            var activeSceneName = context.RestoredExecutionState?.CurrentSceneName
+                ?? context.ExecutedSceneOrder.LastOrDefault()
+                ?? context.ConversationHistory
+                    .Select(m => ExtractSceneNameFromLabel(m.Label))
+                    .LastOrDefault(name => !string.IsNullOrEmpty(name));
+
+            // Convert TrackedMessages to responses for the summarizer, propagating the active
+            // scene so it survives the summary and the router can stay on the same flow.
+            var responsesForSummary = messagesToResume
+                .Select(m => new AiSceneResponse
+                {
+                    Message = m.Message.Text,
+                    SceneName = ExtractSceneNameFromLabel(m.Label) ?? activeSceneName
+                })
+                .ToList();
+
+            // Honor ISummarizer.ShouldSummarize so that ResponseCountThreshold, CharacterThreshold
+            // and any custom trigger override are all respected (previously an inline count-only
+            // check bypassed this entirely).
+            if (_summarizer.ShouldSummarize(responsesForSummary))
             {
                 yield return YieldStatus(AiResponseStatus.Summarizing, "Summarizing cached conversation");
-
-                // Convert TrackedMessages to responses for summarizer
-                var responsesForSummary = messagesToResume
-                    .Select(m => new AiSceneResponse { Message = m.Message.Text })
-                    .ToList();
 
                 var summary = await _summarizer.SummarizeAsync(responsesForSummary, cancellationToken);
 
@@ -792,6 +819,32 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
                 await SaveToCacheAsync(context, cancellationToken);
             }
         }
+    }
+
+    /// <summary>
+    /// Extracts the scene name encoded in a <see cref="TrackedMessage.Label"/> for scene-scoped
+    /// messages (<c>SceneActor:{scene}:{actor}</c> or <c>McpContext:{scene}</c>). Returns null for
+    /// labels that do not carry scene information (e.g. User/Assistant/Tool/InitialContext).
+    /// </summary>
+    private static string? ExtractSceneNameFromLabel(string? label)
+    {
+        if (string.IsNullOrEmpty(label))
+            return null;
+
+        const string sceneActorPrefix = "SceneActor:";
+        const string mcpContextPrefix = "McpContext:";
+
+        if (label.StartsWith(sceneActorPrefix, StringComparison.Ordinal))
+        {
+            var afterPrefix = label.AsSpan(sceneActorPrefix.Length);
+            var separatorIndex = afterPrefix.IndexOf(':');
+            return separatorIndex >= 0 ? afterPrefix[..separatorIndex].ToString() : afterPrefix.ToString();
+        }
+
+        if (label.StartsWith(mcpContextPrefix, StringComparison.Ordinal))
+            return label[mcpContextPrefix.Length..];
+
+        return null;
     }
 
     private async IAsyncEnumerable<AiSceneResponse> FinalizePlayFrameworkAsync(
