@@ -1,11 +1,13 @@
 using System.Collections.ObjectModel;
 using Microsoft.Extensions.AI;
+using Rystem.PlayFramework.Helpers;
 
 namespace Rystem.PlayFramework;
 
 internal sealed class MaterializedSceneCatalog
 {
     private readonly IReadOnlyDictionary<string, IScene> _scenesByName;
+    private readonly IReadOnlyDictionary<string, IScene> _scenesByNormalizedName;
 
     public MaterializedSceneCatalog(
         RuntimeDescriptionCatalogIdentity identity,
@@ -18,6 +20,14 @@ internal sealed class MaterializedSceneCatalog
         SceneDeclarations = new ReadOnlyCollection<AITool>(scenes.Select(x => x.AiTool).ToList());
         _scenesByName = new ReadOnlyDictionary<string, IScene>(
             scenes.ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase));
+
+        // Secondary index keyed by the normalized (routing-function) name, so scene selection
+        // resolves correctly when the LLM calls the sanitized function name emitted by
+        // Scene.AiFunction (e.g. a scene named "Ferie, permessi" → "Ferie_permessi").
+        var normalized = new Dictionary<string, IScene>(StringComparer.OrdinalIgnoreCase);
+        foreach (var scene in scenes)
+            normalized.TryAdd(ToolNameNormalizer.Normalize(scene.Name), scene);
+        _scenesByNormalizedName = new ReadOnlyDictionary<string, IScene>(normalized);
     }
 
     public RuntimeDescriptionCatalogIdentity Identity { get; }
@@ -26,7 +36,8 @@ internal sealed class MaterializedSceneCatalog
     public IReadOnlyDictionary<string, string> Descriptions { get; }
 
     public IScene? TryGetScene(string name)
-        => _scenesByName.GetValueOrDefault(name);
+        => _scenesByName.GetValueOrDefault(name)
+            ?? _scenesByNormalizedName.GetValueOrDefault(ToolNameNormalizer.Normalize(name));
 
     public RuntimeSceneCatalogView CreateView(RuntimeDescriptionExecutionInfo executionInfo)
     {

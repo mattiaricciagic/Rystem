@@ -138,7 +138,7 @@ internal sealed class EndpointHttpTool : ISceneTool, ISceneToolMetadata
             {
                 url = url.Replace(
                     $"{{{routeParam}}}",
-                    value.GetString() ?? value.GetRawText());
+                    JsonElementToString(value));
             }
         }
 
@@ -154,10 +154,10 @@ internal sealed class EndpointHttpTool : ISceneTool, ISceneToolMetadata
                 if (element.ValueKind == JsonValueKind.Array)
                 {
                     return element.EnumerateArray()
-                        .Select(v => $"{qp.Name}={Uri.EscapeDataString(v.GetString() ?? v.GetRawText())}");
+                        .Select(v => $"{qp.Name}={Uri.EscapeDataString(JsonElementToString(v))}");
                 }
 
-                var raw = element.GetString() ?? element.GetRawText();
+                var raw = JsonElementToString(element);
                 return [$"{qp.Name}={Uri.EscapeDataString(raw)}"];
             });
 
@@ -167,6 +167,21 @@ internal sealed class EndpointHttpTool : ISceneTool, ISceneToolMetadata
 
         return url;
     }
+
+    /// <summary>
+    /// Converts a <see cref="JsonElement"/> to its string representation for URL building.
+    /// Unlike <c>GetString() ?? GetRawText()</c>, this does not throw for non-string kinds:
+    /// <see cref="JsonElement.GetString"/> throws <see cref="InvalidOperationException"/> when the
+    /// value is a number, boolean, etc., so the <c>??</c> fallback would never be reached. This
+    /// switch handles every kind explicitly (numbers/booleans/objects fall back to the raw JSON text).
+    /// </summary>
+    private static string JsonElementToString(JsonElement element)
+        => element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString() ?? string.Empty,
+            JsonValueKind.Null or JsonValueKind.Undefined => string.Empty,
+            _ => element.GetRawText()
+        };
 
     /// <summary>
     /// Reconstructs the request body object from the flat argument dictionary.
