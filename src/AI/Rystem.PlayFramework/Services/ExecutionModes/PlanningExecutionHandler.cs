@@ -9,20 +9,17 @@ namespace Rystem.PlayFramework.Services.ExecutionModes;
 /// </summary>
 internal sealed class PlanningExecutionHandler : IExecutionModeHandler
 {
-    private readonly IFactory<ExecutionModeHandlerDependencies> _dependenciesFactory;
     private readonly IFactory<ISceneExecutor> _sceneExecutorFactory;
     private readonly IFactory<FinalResponseGenerator> _finalResponseGeneratorFactory;
     private readonly IFactory<IPlanner> _plannerFactory;
     private readonly ILogger<PlanningExecutionHandler> _logger;
 
     public PlanningExecutionHandler(
-        IFactory<ExecutionModeHandlerDependencies> dependenciesFactory,
         IFactory<ISceneExecutor> sceneExecutorFactory,
         IFactory<FinalResponseGenerator> finalResponseGeneratorFactory,
         IFactory<IPlanner> plannerFactory,
         ILogger<PlanningExecutionHandler> logger)
     {
-        _dependenciesFactory = dependenciesFactory;
         _sceneExecutorFactory = sceneExecutorFactory;
         _finalResponseGeneratorFactory = finalResponseGeneratorFactory;
         _plannerFactory = plannerFactory;

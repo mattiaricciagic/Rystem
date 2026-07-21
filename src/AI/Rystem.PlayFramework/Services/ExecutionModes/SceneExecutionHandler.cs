@@ -9,16 +9,13 @@ namespace Rystem.PlayFramework.Services.ExecutionModes;
 /// </summary>
 internal sealed class SceneExecutionHandler : IExecutionModeHandler
 {
-    private readonly IFactory<ExecutionModeHandlerDependencies> _dependenciesFactory;
     private readonly IFactory<ISceneExecutor> _sceneExecutorFactory;
     private readonly ILogger<SceneExecutionHandler> _logger;
 
     public SceneExecutionHandler(
-        IFactory<ExecutionModeHandlerDependencies> dependenciesFactory,
         IFactory<ISceneExecutor> sceneExecutorFactory,
         ILogger<SceneExecutionHandler> logger)
     {
-        _dependenciesFactory = dependenciesFactory;
         _sceneExecutorFactory = sceneExecutorFactory;
         _logger = logger;
     }
