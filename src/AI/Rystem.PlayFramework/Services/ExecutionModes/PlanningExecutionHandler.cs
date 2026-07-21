@@ -56,7 +56,7 @@ internal sealed class PlanningExecutionHandler : IExecutionModeHandler
         if (existingPlan != null && existingPlan.Steps.Any(s => !s.IsCompleted))
         {
             // Resume plan execution from where we left off
-            await foreach (var response in ExecutePlanAsync(dependencies, sceneExecutor, finalResponseGenerator, context, settings, existingPlan, cancellationToken))
+            await foreach (var response in ExecutePlanAsync(sceneExecutor, finalResponseGenerator, context, settings, existingPlan, cancellationToken))
             {
                 yield return response;
             }
@@ -96,7 +96,7 @@ internal sealed class PlanningExecutionHandler : IExecutionModeHandler
         else
         {
             // Execute plan
-            await foreach (var response in ExecutePlanAsync(dependencies, sceneExecutor, finalResponseGenerator, context, settings, plan, cancellationToken))
+            await foreach (var response in ExecutePlanAsync(sceneExecutor, finalResponseGenerator, context, settings, plan, cancellationToken))
             {
                 yield return response;
             }
@@ -104,7 +104,6 @@ internal sealed class PlanningExecutionHandler : IExecutionModeHandler
     }
 
     private async IAsyncEnumerable<AiSceneResponse> ExecutePlanAsync(
-        ExecutionModeHandlerDependencies dependencies,
         ISceneExecutor sceneExecutor,
         FinalResponseGenerator finalResponseGenerator,
         SceneContext context,

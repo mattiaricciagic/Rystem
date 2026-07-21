@@ -235,15 +235,15 @@ internal sealed class RuntimeDescriptionCatalogManager : IRuntimeDescriptionRefr
                         outcome,
                         global?.Catalog.Identity.CatalogId,
                         state,
-                        sourceDuration,
-                        TimeSpan.Zero,
                         RuntimeDescriptionSnapshotStoreOutcome.NotAttempted,
                         outcome == RuntimeDescriptionRefreshOutcome.Changed
                             ? CountChanged(global?.Catalog.Descriptions, candidate.Descriptions)
                             : 0,
-                        materializationDuration: materializationDuration,
-                        validationDuration: candidate.ValidationDuration,
-                        hashDuration: candidate.HashDuration),
+                        new RefreshTimings(
+                            Source: sourceDuration,
+                            Materialization: materializationDuration,
+                            Validation: candidate.ValidationDuration,
+                            Hash: candidate.HashDuration)),
                     RuntimeDescriptionRefreshReason.EveryRequest,
                     activity);
                 return state;
@@ -257,39 +257,7 @@ internal sealed class RuntimeDescriptionCatalogManager : IRuntimeDescriptionRefr
             {
                 var sourceDuration = DiagnosticsStopwatch.GetElapsedTime(sourceStarted);
                 _logger.LogWarning(ex, "playframework.runtime_metadata.source_resolution_failed OperationId={OperationId} Factory={FactoryName} Reason=EveryRequest", operationId, _factoryName);
-                var current = Volatile.Read(ref _current);
-                RuntimeDescriptionRecovery? recovery;
-                try
-                {
-                    recovery = current is null
-                        ? await RecoverWithoutSourceAsync(operationId, cancellationToken).ConfigureAwait(false)
-                        : null;
-                }
-                catch (OperationCanceledException)
-                {
-                    CompleteCancelledRefresh(operationId, RuntimeDescriptionRefreshReason.EveryRequest, activity);
-                    throw;
-                }
-                var recovered = current ?? recovery?.State
-                    ?? throw new InvalidOperationException($"No runtime description fallback is available for factory '{_factoryName}'.", ex);
-                var outcome = current is null
-                    ? RuntimeDescriptionRefreshOutcome.Changed
-                    : RuntimeDescriptionRefreshOutcome.Failed;
-                CompleteRefresh(
-                    outcome == RuntimeDescriptionRefreshOutcome.Failed
-                        ? CreateFailedResult(operationId, recovered, sourceDuration, RuntimeDescriptionRecoverySource.CurrentCatalog, ex)
-                        : CreateResult(
-                            operationId,
-                            outcome,
-                            null,
-                            recovered,
-                            sourceDuration,
-                            TimeSpan.Zero,
-                            recovery?.SnapshotStoreOutcome ?? RuntimeDescriptionSnapshotStoreOutcome.NotAttempted,
-                            recovered.Catalog.Descriptions.Count),
-                    RuntimeDescriptionRefreshReason.EveryRequest,
-                    activity);
-                return recovered;
+                return await HandleEveryRequestFallbackAsync(operationId, ex, sourceDuration, activity, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -311,13 +279,56 @@ internal sealed class RuntimeDescriptionCatalogManager : IRuntimeDescriptionRefr
                     FailureStage = "source",
                     ErrorMessage = ex.Message
                 }, RuntimeDescriptionRefreshReason.EveryRequest, activity);
-                throw;
+                throw new InvalidOperationException(
+                    $"Runtime description refresh (EveryRequest) failed for factory '{_factoryName}'.", ex);
             }
         }
         finally
         {
             _refreshLock.Release();
         }
+    }
+
+    private async Task<PublishedRuntimeDescriptionState> HandleEveryRequestFallbackAsync(
+        Guid operationId,
+        Exception sourceEx,
+        TimeSpan sourceDuration,
+        Activity? activity,
+        CancellationToken cancellationToken)
+    {
+        var current = Volatile.Read(ref _current);
+        RuntimeDescriptionRecovery? recovery;
+        try
+        {
+            recovery = current is null
+                ? await RecoverWithoutSourceAsync(operationId, cancellationToken).ConfigureAwait(false)
+                : null;
+        }
+        catch (OperationCanceledException)
+        {
+            CompleteCancelledRefresh(operationId, RuntimeDescriptionRefreshReason.EveryRequest, activity);
+            throw;
+        }
+
+        var recovered = current ?? recovery?.State
+            ?? throw new InvalidOperationException($"No runtime description fallback is available for factory '{_factoryName}'.", sourceEx);
+        var outcome = current is null
+            ? RuntimeDescriptionRefreshOutcome.Changed
+            : RuntimeDescriptionRefreshOutcome.Failed;
+        CompleteRefresh(
+            outcome == RuntimeDescriptionRefreshOutcome.Failed
+                ? CreateFailedResult(operationId, recovered, sourceDuration, RuntimeDescriptionRecoverySource.CurrentCatalog, sourceEx)
+                : CreateResult(
+                    operationId,
+                    outcome,
+                    null,
+                    recovered,
+                    recovery?.SnapshotStoreOutcome ?? RuntimeDescriptionSnapshotStoreOutcome.NotAttempted,
+                    recovered.Catalog.Descriptions.Count,
+                    new RefreshTimings(Source: sourceDuration)),
+            RuntimeDescriptionRefreshReason.EveryRequest,
+            activity);
+        return recovered;
     }
 
     private async Task<PublishedRuntimeDescriptionState> AcquirePinnedStateAsync(
@@ -429,127 +440,19 @@ internal sealed class RuntimeDescriptionCatalogManager : IRuntimeDescriptionRefr
             activity?.AddEvent(new ActivityEvent(PlayFrameworkActivitySource.Events.RuntimeDescriptionRefreshStarted));
 
             var candidate = await ResolveCandidateAsync(reason, cancellationToken).ConfigureAwait(false);
-            var sourceDuration = candidate.SourceDuration;
             var previous = Volatile.Read(ref _current);
             var now = DateTimeOffset.UtcNow;
-            var storeOutcome = RuntimeDescriptionSnapshotStoreOutcome.NotAttempted;
-            var storeDuration = TimeSpan.Zero;
 
             if (previous is not null && previous.Catalog.Identity.CatalogId == candidate.Identity.CatalogId)
             {
-                var updated = previous with
-                {
-                    SourceVersion = candidate.SourceVersion,
-                    HasUniformSourceVersion = candidate.HasUniformSourceVersion,
-                    LastValidationOperationId = operationId,
-                    LastValidatedAt = now,
-                    RecoverySource = RuntimeDescriptionRecoverySource.None,
-                    UsedFallback = false
-                };
-                var storeStarted = DiagnosticsStopwatch.GetTimestamp();
-                try
-                {
-                    await _snapshotStore.SaveAsync(_factoryName, ToSnapshot(updated), cancellationToken).ConfigureAwait(false);
-                    storeOutcome = RuntimeDescriptionSnapshotStoreOutcome.Succeeded;
-                    _logger.LogInformation(
-                        "playframework.runtime_metadata.snapshot_persisted OperationId={OperationId} Factory={FactoryName} CatalogId={CatalogId}",
-                        operationId,
-                        _factoryName,
-                        updated.Catalog.Identity.CatalogId);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    storeOutcome = RuntimeDescriptionSnapshotStoreOutcome.Failed;
-                    _logger.LogWarning(ex, "playframework.runtime_metadata.snapshot_store_write_failed OperationId={OperationId} Factory={FactoryName}", operationId, _factoryName);
-                }
-                storeDuration = DiagnosticsStopwatch.GetElapsedTime(storeStarted);
-                Interlocked.Exchange(ref _current, updated);
-
-                return CompleteRefresh(CreateResult(
-                    operationId,
-                    RuntimeDescriptionRefreshOutcome.Unchanged,
-                    previous.Catalog.Identity.CatalogId,
-                    updated,
-                    sourceDuration,
-                    storeDuration,
-                    storeOutcome,
-                    changedItemCount: 0,
-                    validationDuration: candidate.ValidationDuration,
-                    hashDuration: candidate.HashDuration), reason, activity);
+                return CompleteRefresh(
+                    await HandleUnchangedCatalogAsync(operationId, candidate, previous, now, cancellationToken).ConfigureAwait(false),
+                    reason, activity);
             }
 
-            var changedItemCount = CountChanged(previous?.Catalog.Descriptions, candidate.Descriptions);
-            _logger.LogInformation(
-                "playframework.runtime_metadata.change_detected OperationId={OperationId} Factory={FactoryName} CandidateCatalogId={CandidateCatalogId} ChangedItemCount={ChangedItemCount}",
-                operationId,
-                _factoryName,
-                candidate.Identity.CatalogId,
-                changedItemCount);
-            activity?.AddEvent(new ActivityEvent(
-                PlayFrameworkActivitySource.Events.RuntimeDescriptionChangeDetected,
-                tags: new ActivityTagsCollection
-                {
-                    { "playframework.runtime_metadata.candidate_catalog_id", candidate.Identity.CatalogId },
-                    { "playframework.runtime_metadata.changed_item_count", changedItemCount }
-                }));
-
-            var materializationStarted = DiagnosticsStopwatch.GetTimestamp();
-            var catalog = Materialize(candidate);
-            var materializationDuration = DiagnosticsStopwatch.GetElapsedTime(materializationStarted);
-            var state = new PublishedRuntimeDescriptionState(
-                catalog,
-                candidate.SourceVersion,
-                candidate.HasUniformSourceVersion,
-                operationId,
-                now,
-                RuntimeDescriptionRecoverySource.None,
-                false);
-
-            var storeStartedChanged = DiagnosticsStopwatch.GetTimestamp();
-            try
-            {
-                await _snapshotStore.SaveAsync(_factoryName, ToSnapshot(state), cancellationToken).ConfigureAwait(false);
-                storeOutcome = RuntimeDescriptionSnapshotStoreOutcome.Succeeded;
-                _logger.LogInformation(
-                    "playframework.runtime_metadata.snapshot_persisted OperationId={OperationId} Factory={FactoryName} CatalogId={CatalogId}",
-                    operationId,
-                    _factoryName,
-                    state.Catalog.Identity.CatalogId);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                storeOutcome = RuntimeDescriptionSnapshotStoreOutcome.Failed;
-                _logger.LogWarning(ex, "playframework.runtime_metadata.snapshot_store_write_failed OperationId={OperationId} Factory={FactoryName}", operationId, _factoryName);
-            }
-            storeDuration = DiagnosticsStopwatch.GetElapsedTime(storeStartedChanged);
-
-            var publicationStarted = DiagnosticsStopwatch.GetTimestamp();
-            Interlocked.Exchange(ref _current, state);
-            _history[catalog.Identity.CatalogId] = catalog;
-            PruneHistory();
-            var publicationDuration = DiagnosticsStopwatch.GetElapsedTime(publicationStarted);
-
-            return CompleteRefresh(CreateResult(
-                operationId,
-                RuntimeDescriptionRefreshOutcome.Changed,
-                previous?.Catalog.Identity.CatalogId,
-                state,
-                sourceDuration,
-                storeDuration,
-                storeOutcome,
-                changedItemCount,
-                materializationDuration,
-                publicationDuration,
-                candidate.ValidationDuration,
-                candidate.HashDuration), reason, activity);
+            return CompleteRefresh(
+                await HandleChangedCatalogAsync(operationId, candidate, previous, now, activity, cancellationToken).ConfigureAwait(false),
+                reason, activity);
         }
         catch (OperationCanceledException)
         {
@@ -559,66 +462,192 @@ internal sealed class RuntimeDescriptionCatalogManager : IRuntimeDescriptionRefr
         catch (Exception ex)
         {
             var sourceDuration = DiagnosticsStopwatch.GetElapsedTime(sourceStarted);
-            _logger.LogWarning(
-                ex,
-                "playframework.runtime_metadata.source_resolution_failed OperationId={OperationId} Factory={FactoryName} Reason={Reason}",
-                operationId,
-                _factoryName,
-                reason);
-
-            if (_settings.FailureMode == RuntimeDescriptionFailureMode.UseFallback)
-            {
-                var current = Volatile.Read(ref _current);
-                if (current is not null)
-                {
-                    _logger.LogWarning(
-                        "playframework.runtime_metadata.current_catalog_retained OperationId={OperationId} Factory={FactoryName} CatalogId={CatalogId}",
-                        operationId,
-                        _factoryName,
-                        current.Catalog.Identity.CatalogId);
-                    return CompleteRefresh(
-                        CreateFailedResult(operationId, current, sourceDuration, RuntimeDescriptionRecoverySource.CurrentCatalog, ex),
-                        reason,
-                        activity);
-                }
-
-                RuntimeDescriptionRecovery? recovery;
-                try
-                {
-                    recovery = await RecoverWithoutSourceAsync(operationId, cancellationToken).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    CompleteCancelledRefresh(operationId, reason, activity);
-                    throw;
-                }
-                if (recovery is not null)
-                {
-                    return CompleteRefresh(
-                        CreateResult(operationId, RuntimeDescriptionRefreshOutcome.Changed, null, recovery.State, sourceDuration, TimeSpan.Zero, recovery.SnapshotStoreOutcome, recovery.State.Catalog.Descriptions.Count),
-                        reason,
-                        activity);
-                }
-            }
-
-            return CompleteRefresh(new RuntimeDescriptionRefreshResult
-            {
-                OperationId = operationId,
-                Outcome = RuntimeDescriptionRefreshOutcome.Failed,
-                PreviousCatalogId = Volatile.Read(ref _current)?.Catalog.Identity.CatalogId,
-                CurrentCatalogId = Volatile.Read(ref _current)?.Catalog.Identity.CatalogId,
-                CatalogIdentity = Volatile.Read(ref _current)?.Catalog.Identity,
-                TemplateHash = _templateHash,
-                SourceDuration = sourceDuration,
-                RecoverySource = RuntimeDescriptionRecoverySource.None,
-                FailureStage = "source",
-                ErrorMessage = ex.Message
-            }, reason, activity);
+            return CompleteRefresh(
+                await HandleRefreshFailureAsync(operationId, ex, sourceDuration, reason, activity, cancellationToken).ConfigureAwait(false),
+                reason, activity);
         }
         finally
         {
             _refreshLock.Release();
         }
+    }
+
+    private async Task<RuntimeDescriptionRefreshResult> HandleUnchangedCatalogAsync(
+        Guid operationId,
+        ResolvedCandidate candidate,
+        PublishedRuntimeDescriptionState previous,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var updated = previous with
+        {
+            SourceVersion = candidate.SourceVersion,
+            HasUniformSourceVersion = candidate.HasUniformSourceVersion,
+            LastValidationOperationId = operationId,
+            LastValidatedAt = now,
+            RecoverySource = RuntimeDescriptionRecoverySource.None,
+            UsedFallback = false
+        };
+        var (storeOutcome, storeDuration) = await PersistSnapshotAsync(operationId, updated, cancellationToken).ConfigureAwait(false);
+        Interlocked.Exchange(ref _current, updated);
+
+        return CreateResult(
+            operationId,
+            RuntimeDescriptionRefreshOutcome.Unchanged,
+            previous.Catalog.Identity.CatalogId,
+            updated,
+            storeOutcome,
+            changedItemCount: 0,
+            new RefreshTimings(
+                Source: candidate.SourceDuration,
+                Store: storeDuration,
+                Validation: candidate.ValidationDuration,
+                Hash: candidate.HashDuration));
+    }
+
+    private async Task<RuntimeDescriptionRefreshResult> HandleChangedCatalogAsync(
+        Guid operationId,
+        ResolvedCandidate candidate,
+        PublishedRuntimeDescriptionState? previous,
+        DateTimeOffset now,
+        Activity? activity,
+        CancellationToken cancellationToken)
+    {
+        var changedItemCount = CountChanged(previous?.Catalog.Descriptions, candidate.Descriptions);
+        _logger.LogInformation(
+            "playframework.runtime_metadata.change_detected OperationId={OperationId} Factory={FactoryName} CandidateCatalogId={CandidateCatalogId} ChangedItemCount={ChangedItemCount}",
+            operationId,
+            _factoryName,
+            candidate.Identity.CatalogId,
+            changedItemCount);
+        activity?.AddEvent(new ActivityEvent(
+            PlayFrameworkActivitySource.Events.RuntimeDescriptionChangeDetected,
+            tags: new ActivityTagsCollection
+            {
+                { "playframework.runtime_metadata.candidate_catalog_id", candidate.Identity.CatalogId },
+                { "playframework.runtime_metadata.changed_item_count", changedItemCount }
+            }));
+
+        var materializationStarted = DiagnosticsStopwatch.GetTimestamp();
+        var catalog = Materialize(candidate);
+        var materializationDuration = DiagnosticsStopwatch.GetElapsedTime(materializationStarted);
+        var state = new PublishedRuntimeDescriptionState(
+            catalog,
+            candidate.SourceVersion,
+            candidate.HasUniformSourceVersion,
+            operationId,
+            now,
+            RuntimeDescriptionRecoverySource.None,
+            false);
+
+        var (storeOutcome, storeDuration) = await PersistSnapshotAsync(operationId, state, cancellationToken).ConfigureAwait(false);
+
+        var publicationStarted = DiagnosticsStopwatch.GetTimestamp();
+        Interlocked.Exchange(ref _current, state);
+        _history[catalog.Identity.CatalogId] = catalog;
+        PruneHistory();
+        var publicationDuration = DiagnosticsStopwatch.GetElapsedTime(publicationStarted);
+
+        return CreateResult(
+            operationId,
+            RuntimeDescriptionRefreshOutcome.Changed,
+            previous?.Catalog.Identity.CatalogId,
+            state,
+            storeOutcome,
+            changedItemCount,
+            new RefreshTimings(
+                Source: candidate.SourceDuration,
+                Store: storeDuration,
+                Materialization: materializationDuration,
+                Publication: publicationDuration,
+                Validation: candidate.ValidationDuration,
+                Hash: candidate.HashDuration));
+    }
+
+    private async Task<(RuntimeDescriptionSnapshotStoreOutcome outcome, TimeSpan duration)> PersistSnapshotAsync(
+        Guid operationId,
+        PublishedRuntimeDescriptionState state,
+        CancellationToken cancellationToken)
+    {
+        var storeStarted = DiagnosticsStopwatch.GetTimestamp();
+        try
+        {
+            await _snapshotStore.SaveAsync(_factoryName, ToSnapshot(state), cancellationToken).ConfigureAwait(false);
+            _logger.LogInformation(
+                "playframework.runtime_metadata.snapshot_persisted OperationId={OperationId} Factory={FactoryName} CatalogId={CatalogId}",
+                operationId,
+                _factoryName,
+                state.Catalog.Identity.CatalogId);
+            return (RuntimeDescriptionSnapshotStoreOutcome.Succeeded, DiagnosticsStopwatch.GetElapsedTime(storeStarted));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "playframework.runtime_metadata.snapshot_store_write_failed OperationId={OperationId} Factory={FactoryName}", operationId, _factoryName);
+            return (RuntimeDescriptionSnapshotStoreOutcome.Failed, DiagnosticsStopwatch.GetElapsedTime(storeStarted));
+        }
+    }
+
+    private async Task<RuntimeDescriptionRefreshResult> HandleRefreshFailureAsync(
+        Guid operationId,
+        Exception ex,
+        TimeSpan sourceDuration,
+        RuntimeDescriptionRefreshReason reason,
+        Activity? activity,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogWarning(
+            ex,
+            "playframework.runtime_metadata.source_resolution_failed OperationId={OperationId} Factory={FactoryName} Reason={Reason}",
+            operationId,
+            _factoryName,
+            reason);
+
+        if (_settings.FailureMode == RuntimeDescriptionFailureMode.UseFallback)
+        {
+            var current = Volatile.Read(ref _current);
+            if (current is not null)
+            {
+                _logger.LogWarning(
+                    "playframework.runtime_metadata.current_catalog_retained OperationId={OperationId} Factory={FactoryName} CatalogId={CatalogId}",
+                    operationId,
+                    _factoryName,
+                    current.Catalog.Identity.CatalogId);
+                return CreateFailedResult(operationId, current, sourceDuration, RuntimeDescriptionRecoverySource.CurrentCatalog, ex);
+            }
+
+            RuntimeDescriptionRecovery? recovery;
+            try
+            {
+                recovery = await RecoverWithoutSourceAsync(operationId, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                CompleteCancelledRefresh(operationId, reason, activity);
+                throw;
+            }
+            if (recovery is not null)
+            {
+                return CreateResult(operationId, RuntimeDescriptionRefreshOutcome.Changed, null, recovery.State, recovery.SnapshotStoreOutcome, recovery.State.Catalog.Descriptions.Count, new RefreshTimings(Source: sourceDuration));
+            }
+        }
+
+        return new RuntimeDescriptionRefreshResult
+        {
+            OperationId = operationId,
+            Outcome = RuntimeDescriptionRefreshOutcome.Failed,
+            PreviousCatalogId = Volatile.Read(ref _current)?.Catalog.Identity.CatalogId,
+            CurrentCatalogId = Volatile.Read(ref _current)?.Catalog.Identity.CatalogId,
+            CatalogIdentity = Volatile.Read(ref _current)?.Catalog.Identity,
+            TemplateHash = _templateHash,
+            SourceDuration = sourceDuration,
+            RecoverySource = RuntimeDescriptionRecoverySource.None,
+            FailureStage = "source",
+            ErrorMessage = ex.Message
+        };
     }
 
     private async Task<bool> WaitAndReturnTrueAsync(CancellationToken cancellationToken)
@@ -631,7 +660,7 @@ internal sealed class RuntimeDescriptionCatalogManager : IRuntimeDescriptionRefr
         Guid operationId,
         CancellationToken cancellationToken)
     {
-        var snapshotStoreOutcome = RuntimeDescriptionSnapshotStoreOutcome.NotAttempted;
+        RuntimeDescriptionSnapshotStoreOutcome snapshotStoreOutcome;
         try
         {
             var snapshot = await _snapshotStore.GetLatestAsync(_factoryName, cancellationToken).ConfigureAwait(false);
@@ -720,45 +749,53 @@ internal sealed class RuntimeDescriptionCatalogManager : IRuntimeDescriptionRefr
         var dynamicValues = new List<RuntimeDescriptionValue>();
 
         foreach (var scene in _templates)
-        {
-            var sceneValue = await ResolveAsync(scene.RuntimeDescription, scene.Description, context, cancellationToken).ConfigureAwait(false);
-            if (scene.RuntimeDescription is not null)
-                dynamicValues.Add(sceneValue);
-            descriptions[SceneKey(scene)] = EffectiveSceneDescription(scene, sceneValue.Value);
-
-            foreach (var serviceTool in scene.ServiceTools)
-            {
-                var value = await ResolveAsync(serviceTool.RuntimeDescription, serviceTool.Description, context, cancellationToken).ConfigureAwait(false);
-                if (serviceTool.RuntimeDescription is not null)
-                    dynamicValues.Add(value);
-                descriptions[ServiceToolKey(scene, serviceTool)] = value.Value;
-            }
-
-            foreach (var endpointTool in scene.EndpointTools)
-            {
-                var value = await ResolveAsync(endpointTool.RuntimeDescription, endpointTool.Description, context, cancellationToken).ConfigureAwait(false);
-                if (endpointTool.RuntimeDescription is not null)
-                    dynamicValues.Add(value);
-                descriptions[EndpointToolKey(scene, endpointTool)] = value.Value;
-            }
-
-            foreach (var clientTool in scene.ClientInteractionDefinitions ?? [])
-            {
-                var staticValue = clientTool.RuntimeDescription is null
-                    ? clientTool.Description ?? $"Client-side tool: {clientTool.ToolName}"
-                    : clientTool.Description ?? string.Empty;
-                var value = await ResolveAsync(clientTool.RuntimeDescription, staticValue, context, cancellationToken).ConfigureAwait(false);
-                if (clientTool.RuntimeDescription is not null)
-                    dynamicValues.Add(value);
-                descriptions[ClientToolKey(scene, clientTool)] = value.Value;
-            }
-        }
+            await ResolveCandidateForSceneAsync(scene, context, descriptions, dynamicValues, cancellationToken).ConfigureAwait(false);
 
         var sourceDuration = DiagnosticsStopwatch.GetElapsedTime(sourceStarted);
         var validationStarted = DiagnosticsStopwatch.GetTimestamp();
         ValidateDescriptions(descriptions);
         var validationDuration = DiagnosticsStopwatch.GetElapsedTime(validationStarted);
         return CreateCandidate(descriptions, dynamicValues, reason, sourceDuration, validationDuration);
+    }
+
+    private async Task ResolveCandidateForSceneAsync(
+        SceneConfiguration scene,
+        RuntimeDescriptionContext context,
+        Dictionary<string, string> descriptions,
+        List<RuntimeDescriptionValue> dynamicValues,
+        CancellationToken cancellationToken)
+    {
+        var sceneValue = await ResolveAsync(scene.RuntimeDescription, scene.Description, context, cancellationToken).ConfigureAwait(false);
+        if (scene.RuntimeDescription is not null)
+            dynamicValues.Add(sceneValue);
+        descriptions[SceneKey(scene)] = EffectiveSceneDescription(scene, sceneValue.Value);
+
+        foreach (var serviceTool in scene.ServiceTools)
+        {
+            var value = await ResolveAsync(serviceTool.RuntimeDescription, serviceTool.Description, context, cancellationToken).ConfigureAwait(false);
+            if (serviceTool.RuntimeDescription is not null)
+                dynamicValues.Add(value);
+            descriptions[ServiceToolKey(scene, serviceTool)] = value.Value;
+        }
+
+        foreach (var endpointTool in scene.EndpointTools)
+        {
+            var value = await ResolveAsync(endpointTool.RuntimeDescription, endpointTool.Description, context, cancellationToken).ConfigureAwait(false);
+            if (endpointTool.RuntimeDescription is not null)
+                dynamicValues.Add(value);
+            descriptions[EndpointToolKey(scene, endpointTool)] = value.Value;
+        }
+
+        foreach (var clientTool in scene.ClientInteractionDefinitions ?? [])
+        {
+            var staticValue = clientTool.RuntimeDescription is null
+                ? clientTool.Description ?? $"Client-side tool: {clientTool.ToolName}"
+                : clientTool.Description ?? string.Empty;
+            var value = await ResolveAsync(clientTool.RuntimeDescription, staticValue, context, cancellationToken).ConfigureAwait(false);
+            if (clientTool.RuntimeDescription is not null)
+                dynamicValues.Add(value);
+            descriptions[ClientToolKey(scene, clientTool)] = value.Value;
+        }
     }
 
     private ResolvedCandidate BuildStaticCandidate(bool requireComplete, RuntimeDescriptionRefreshReason reason)
@@ -979,15 +1016,12 @@ internal sealed class RuntimeDescriptionCatalogManager : IRuntimeDescriptionRefr
         {
             if (scene.RuntimeDescription is not null)
                 yield return SceneKey(scene);
-            foreach (var tool in scene.ServiceTools)
-                if (tool.RuntimeDescription is not null)
-                    yield return ServiceToolKey(scene, tool);
-            foreach (var tool in scene.EndpointTools)
-                if (tool.RuntimeDescription is not null)
-                    yield return EndpointToolKey(scene, tool);
-            foreach (var tool in scene.ClientInteractionDefinitions ?? [])
-                if (tool.RuntimeDescription is not null)
-                    yield return ClientToolKey(scene, tool);
+            foreach (var tool in scene.ServiceTools.Where(t => t.RuntimeDescription is not null))
+                yield return ServiceToolKey(scene, tool);
+            foreach (var tool in scene.EndpointTools.Where(t => t.RuntimeDescription is not null))
+                yield return EndpointToolKey(scene, tool);
+            foreach (var tool in (scene.ClientInteractionDefinitions ?? []).Where(t => t.RuntimeDescription is not null))
+                yield return ClientToolKey(scene, tool);
         }
     }
 
@@ -1005,7 +1039,7 @@ internal sealed class RuntimeDescriptionCatalogManager : IRuntimeDescriptionRefr
             throw new InvalidOperationException("MaxDescriptionUtf8Bytes cannot exceed MaxCatalogUtf8Bytes.");
     }
 
-    private string EffectiveSceneDescription(SceneConfiguration scene, string description)
+    private static string EffectiveSceneDescription(SceneConfiguration scene, string description)
     {
         if (!scene.AutoGenerateToolDescription)
             return description;
@@ -1027,15 +1061,12 @@ internal sealed class RuntimeDescriptionCatalogManager : IRuntimeDescriptionRefr
         {
             if (scene.RuntimeDescription is not null)
                 yield return scene.RuntimeDescription;
-            foreach (var tool in scene.ServiceTools)
-                if (tool.RuntimeDescription is not null)
-                    yield return tool.RuntimeDescription;
-            foreach (var tool in scene.EndpointTools)
-                if (tool.RuntimeDescription is not null)
-                    yield return tool.RuntimeDescription;
-            foreach (var tool in scene.ClientInteractionDefinitions ?? [])
-                if (tool.RuntimeDescription is not null)
-                    yield return tool.RuntimeDescription;
+            foreach (var tool in scene.ServiceTools.Where(t => t.RuntimeDescription is not null))
+                yield return tool.RuntimeDescription!;
+            foreach (var tool in scene.EndpointTools.Where(t => t.RuntimeDescription is not null))
+                yield return tool.RuntimeDescription!;
+            foreach (var tool in (scene.ClientInteractionDefinitions ?? []).Where(t => t.RuntimeDescription is not null))
+                yield return tool.RuntimeDescription!;
         }
     }
 
@@ -1213,19 +1244,22 @@ internal sealed class RuntimeDescriptionCatalogManager : IRuntimeDescriptionRefr
             ErrorMessage = "Runtime description refresh was cancelled."
         }, reason, activity);
 
+    private sealed record RefreshTimings(
+        TimeSpan Source = default,
+        TimeSpan Store = default,
+        TimeSpan Materialization = default,
+        TimeSpan Publication = default,
+        TimeSpan Validation = default,
+        TimeSpan Hash = default);
+
     private RuntimeDescriptionRefreshResult CreateResult(
         Guid operationId,
         RuntimeDescriptionRefreshOutcome outcome,
         string? previousCatalogId,
         PublishedRuntimeDescriptionState state,
-        TimeSpan sourceDuration,
-        TimeSpan storeDuration,
         RuntimeDescriptionSnapshotStoreOutcome storeOutcome,
         int changedItemCount,
-        TimeSpan materializationDuration = default,
-        TimeSpan publicationDuration = default,
-        TimeSpan validationDuration = default,
-        TimeSpan hashDuration = default)
+        RefreshTimings? timings = null)
         => new()
         {
             OperationId = operationId,
@@ -1243,12 +1277,12 @@ internal sealed class RuntimeDescriptionCatalogManager : IRuntimeDescriptionRefr
             FallbackItemCount = state.RecoverySource == RuntimeDescriptionRecoverySource.StaticFallback
                 ? state.Catalog.Descriptions.Count
                 : 0,
-            SourceDuration = sourceDuration,
-            ValidationDuration = validationDuration,
-            HashDuration = hashDuration,
-            MaterializationDuration = materializationDuration,
-            PublicationDuration = publicationDuration,
-            SnapshotStoreDuration = storeDuration
+            SourceDuration = timings?.Source ?? default,
+            ValidationDuration = timings?.Validation ?? default,
+            HashDuration = timings?.Hash ?? default,
+            MaterializationDuration = timings?.Materialization ?? default,
+            PublicationDuration = timings?.Publication ?? default,
+            SnapshotStoreDuration = timings?.Store ?? default
         };
 
     private RuntimeDescriptionRefreshResult CreateFailedResult(

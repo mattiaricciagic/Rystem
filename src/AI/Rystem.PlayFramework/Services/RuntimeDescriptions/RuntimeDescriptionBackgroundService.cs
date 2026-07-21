@@ -76,6 +76,7 @@ internal sealed class RuntimeDescriptionBackgroundService : BackgroundService
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
+            _logger.LogDebug("Runtime description background loop stopping.");
         }
         catch (Exception ex)
         {

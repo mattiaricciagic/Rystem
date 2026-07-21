@@ -11,6 +11,7 @@ namespace Rystem.PlayFramework.Configuration;
 /// </summary>
 public sealed class ClientInteractionBuilder
 {
+    private const string ToolNameEmptyError = "Tool name cannot be empty";
     private readonly List<ClientInteractionDefinition> _definitions = [];
 
     /// <summary>
@@ -29,7 +30,7 @@ public sealed class ClientInteractionBuilder
         int timeoutSeconds = 30) where T : class
     {
         if (string.IsNullOrWhiteSpace(toolName))
-            throw new ArgumentException("Tool name cannot be empty", nameof(toolName));
+            throw new ArgumentException(ToolNameEmptyError, nameof(toolName));
 
         if (timeoutSeconds <= 0)
             throw new ArgumentException("Timeout must be positive", nameof(timeoutSeconds));
@@ -82,7 +83,7 @@ public sealed class ClientInteractionBuilder
         int timeoutSeconds = 30)
     {
         if (string.IsNullOrWhiteSpace(toolName))
-            throw new ArgumentException("Tool name cannot be empty", nameof(toolName));
+            throw new ArgumentException(ToolNameEmptyError, nameof(toolName));
 
         if (timeoutSeconds <= 0)
             throw new ArgumentException("Timeout must be positive", nameof(timeoutSeconds));
@@ -134,7 +135,7 @@ public sealed class ClientInteractionBuilder
         int timeoutSeconds = 30)
     {
         if (string.IsNullOrWhiteSpace(toolName))
-            throw new ArgumentException("Tool name cannot be empty", nameof(toolName));
+            throw new ArgumentException(ToolNameEmptyError, nameof(toolName));
 
         if (timeoutSeconds <= 0)
             throw new ArgumentException("Timeout must be positive", nameof(timeoutSeconds));
@@ -492,7 +493,7 @@ public sealed class ClientInteractionBuilder
     private static void Validate(string toolName, int timeoutSeconds)
     {
         if (string.IsNullOrWhiteSpace(toolName))
-            throw new ArgumentException("Tool name cannot be empty", nameof(toolName));
+            throw new ArgumentException(ToolNameEmptyError, nameof(toolName));
         if (timeoutSeconds <= 0)
             throw new ArgumentException("Timeout must be positive", nameof(timeoutSeconds));
     }

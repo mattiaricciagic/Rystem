@@ -63,7 +63,7 @@ internal sealed class DynamicChainingExecutionHandler : IExecutionModeHandler
             // Select next scene to execute
             yield return YieldStatus(AiResponseStatus.Running, $"Round {sceneExecutionCount + 1}/{settings.MaxDynamicScenes}");
 
-            var selectedScene = await SelectSceneForChainingAsync(dependencies, context, availableScenes, settings, cancellationToken);
+            var selectedScene = await SelectSceneForChainingAsync(context, availableScenes, settings, cancellationToken);
             if (selectedScene == null)
             {
                 dependencies.Logger.LogDebug("DynamicChaining: no suitable scene found, ending chain (Factory: {FactoryName})", factoryNameString);
@@ -155,7 +155,6 @@ internal sealed class DynamicChainingExecutionHandler : IExecutionModeHandler
     }
 
     private async Task<IScene?> SelectSceneForChainingAsync(
-        ExecutionModeHandlerDependencies dependencies,
         SceneContext context,
         List<IScene> availableScenes,
         SceneRequestSettings settings,

@@ -29,8 +29,8 @@ internal sealed class SceneExecutionHandler : IExecutionModeHandler
         SceneRequestSettings settings,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        // Resolve dependencies from factory
-        var dependencies = _dependenciesFactory.Create(factoryName)
+        // Resolve dependencies from factory (validates registration)
+        _ = _dependenciesFactory.Create(factoryName)
             ?? throw new InvalidOperationException($"ExecutionModeHandlerDependencies not found for factory: {factoryName}");
 
         var sceneExecutor = _sceneExecutorFactory.Create(factoryName)
