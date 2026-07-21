@@ -138,7 +138,7 @@ internal sealed class PlanningExecutionHandler : IExecutionModeHandler
             yield return YieldStatus(AiResponseStatus.ExecutingScene, $"Executing step {step.StepNumber}: {step.SceneName}");
 
             // Execute scene for this step
-            var scene = dependencies.SceneFactory.TryGetScene(step.SceneName);
+            var scene = context.TryGetRuntimeScene(step.SceneName);
             if (scene == null)
             {
                 yield return YieldAndTrack(context, new AiSceneResponse

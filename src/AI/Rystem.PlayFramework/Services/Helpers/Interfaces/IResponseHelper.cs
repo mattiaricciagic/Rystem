@@ -48,7 +48,9 @@ internal interface IResponseHelper
         int? outputTokens = null,
         int? cachedInputTokens = null,
         decimal? cost = null,
-        IEnumerable<AIContent>? contents = null);
+        IEnumerable<AIContent>? contents = null,
+        string? functionName = null,
+        string? functionArguments = null);
 
     /// <summary>
     /// Creates a budget exceeded response.
@@ -82,5 +84,6 @@ internal interface IResponseHelper
         int? cachedInputTokens = null,
         decimal? cost = null,
         string? functionName = null,
-        IEnumerable<AIContent>? contents = null);
+        IEnumerable<AIContent>? contents = null,
+        string? functionArguments = null);
 }

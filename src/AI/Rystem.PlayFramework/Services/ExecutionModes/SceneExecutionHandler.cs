@@ -51,7 +51,7 @@ internal sealed class SceneExecutionHandler : IExecutionModeHandler
         _logger.LogInformation("Scene mode: routing directly to '{SceneName}' (Factory: {FactoryName})",
             settings.SceneName, factoryName?.ToString() ?? "default");
 
-        var targetScene = dependencies.SceneFactory.TryGetScene(settings.SceneName);
+        var targetScene = context.TryGetRuntimeScene(settings.SceneName);
         if (targetScene == null)
         {
             _logger.LogWarning("Scene '{SceneName}' not found in Scene execution mode (Factory: {FactoryName})",

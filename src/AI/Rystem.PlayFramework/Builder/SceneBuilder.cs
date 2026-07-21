@@ -121,6 +121,7 @@ internal sealed class SceneConfiguration
 {
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+    public RuntimeTextConfiguration? RuntimeDescription { get; set; }
     public List<ServiceToolConfiguration> ServiceTools { get; set; } = [];
     public List<EndpointToolConfiguration> EndpointTools { get; set; } = [];
     public List<ActorConfiguration> Actors { get; set; } = [];

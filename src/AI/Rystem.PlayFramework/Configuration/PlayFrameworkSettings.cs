@@ -40,6 +40,11 @@ public sealed class PlayFrameworkSettings
     public TelemetrySettings Telemetry { get; set; } = new();
 
     /// <summary>
+    /// Runtime scene and tool description configuration.
+    /// </summary>
+    public RuntimeDescriptionSettings RuntimeDescriptions { get; set; } = new();
+
+    /// <summary>
     /// Chat client names for PRIMARY load balancing pool.
     /// These clients handle normal traffic with load distribution.
     /// Example: ["gpt-4o-1", "gpt-4o-2", "gpt-4o-3"]

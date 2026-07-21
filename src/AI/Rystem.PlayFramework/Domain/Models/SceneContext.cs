@@ -11,6 +11,21 @@ namespace Rystem.PlayFramework;
 /// </summary>
 public sealed class SceneContext
 {
+    internal MaterializedSceneCatalog MaterializedRuntimeSceneCatalog { get; set; } = null!;
+
+    /// <summary>
+    /// Identity of the runtime description catalog acquired for this request.
+    /// </summary>
+    public RuntimeDescriptionExecutionInfo? RuntimeDescriptions { get; internal set; }
+
+    /// <summary>
+    /// Read-only request-local scene and tool catalog for custom planners and instrumentation.
+    /// </summary>
+    public RuntimeSceneCatalogView? RuntimeSceneCatalog { get; internal set; }
+
+    internal IScene? TryGetRuntimeScene(string name)
+        => MaterializedRuntimeSceneCatalog?.TryGetScene(name);
+
     /// <summary>
     /// Service provider for dependency resolution.
     /// </summary>

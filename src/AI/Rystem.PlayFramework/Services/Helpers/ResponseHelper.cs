@@ -85,7 +85,9 @@ internal sealed class ResponseHelper : IResponseHelper
         int? outputTokens = null,
         int? cachedInputTokens = null,
         decimal? cost = null,
-        IEnumerable<AIContent>? contents = null)
+        IEnumerable<AIContent>? contents = null,
+        string? functionName = null,
+        string? functionArguments = null)
     {
         var response = new AiSceneResponse
         {
@@ -100,7 +102,9 @@ internal sealed class ResponseHelper : IResponseHelper
             TotalTokens = ComputeTotalTokens(inputTokens, outputTokens, cachedInputTokens),
             Cost = cost,
             TotalCost = context.AddCost(cost ?? 0),
-            Contents = contents
+            Contents = contents,
+            FunctionName = functionName,
+            FunctionArguments = functionArguments
         };
 
         // Track in context
@@ -154,7 +158,8 @@ internal sealed class ResponseHelper : IResponseHelper
         int? cachedInputTokens = null,
         decimal? cost = null,
         string? functionName = null,
-        IEnumerable<AIContent>? contents = null)
+        IEnumerable<AIContent>? contents = null,
+        string? functionArguments = null)
     {
         var response = new AiSceneResponse
         {
@@ -170,6 +175,7 @@ internal sealed class ResponseHelper : IResponseHelper
             Cost = cost,
             TotalCost = context.AddCost(cost ?? 0),
             FunctionName = functionName,
+            FunctionArguments = functionArguments,
             Contents = contents
         };
 

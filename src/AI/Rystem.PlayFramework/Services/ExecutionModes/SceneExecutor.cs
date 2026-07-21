@@ -455,20 +455,24 @@ internal sealed class SceneExecutor : ISceneExecutor, IFactoryName
                 status: AiResponseStatus.FunctionRequest,
                 sceneName: sceneName,
                 message: result.Message ?? $"Executing tool: {result.ToolName}",
-                functionName: result.ToolName),
+                functionName: result.ToolName,
+                functionArguments: result.FunctionArguments),
 
             ToolExecutionStatus.Completed => _dependencies.ResponseHelper.CreateAndTrackResponse(
                 context: context,
                 status: AiResponseStatus.FunctionCompleted,
                 sceneName: sceneName,
                 message: result.Message ?? $"Tool {result.ToolName} completed",
-                functionName: result.ToolName),
+                functionName: result.ToolName,
+                functionArguments: result.FunctionArguments),
 
             ToolExecutionStatus.AwaitingClient or ToolExecutionStatus.CommandClient => new AiSceneResponse
             {
                 Status = result.ClientRequest?.IsCommand == true ? AiResponseStatus.CommandClient : AiResponseStatus.AwaitingClient,
                 ConversationKey = context.ConversationKey,
                 ClientInteractionRequest = result.ClientRequest,
+                FunctionName = result.ToolName,
+                FunctionArguments = result.FunctionArguments,
                 Message = result.Message ?? $"Awaiting client execution of tool: {result.ToolName}"
             },
 
@@ -476,7 +480,9 @@ internal sealed class SceneExecutor : ISceneExecutor, IFactoryName
                 sceneName: sceneName,
                 message: result.Message ?? $"Tool execution failed",
                 errorMessage: result.Error,
-                context: context),
+                context: context,
+                functionName: result.ToolName,
+                functionArguments: result.FunctionArguments),
 
             _ => new AiSceneResponse
             {

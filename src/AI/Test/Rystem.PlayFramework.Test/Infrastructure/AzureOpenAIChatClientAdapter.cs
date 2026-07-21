@@ -50,25 +50,7 @@ public sealed class AzureOpenAIChatClientAdapter : IChatClient
             });
         }
 
-        // Build options
-        var chatOptions = new OpenAI.Chat.ChatCompletionOptions();
-        if (options?.Temperature.HasValue == true)
-            chatOptions.Temperature = options.Temperature.Value;
-        if (options?.MaxOutputTokens.HasValue == true)
-            chatOptions.MaxOutputTokenCount = options.MaxOutputTokens.Value;
-
-        // Add tools if provided
-        if (options?.Tools != null && options.Tools.Count > 0)
-        {
-            foreach (var tool in options.Tools)
-            {
-                if (tool is AIFunction aiFunction)
-                {
-                    var functionDef = ConvertToOpenAITool(aiFunction);
-                    chatOptions.Tools.Add(functionDef);
-                }
-            }
-        }
+        var chatOptions = CreateChatCompletionOptions(options);
 
         // Call Azure OpenAI
         var completion = await _chatClient.CompleteChatAsync(openAiMessages, chatOptions, cancellationToken);
@@ -96,12 +78,7 @@ public sealed class AzureOpenAIChatClientAdapter : IChatClient
             });
         }
 
-        // Build options
-        var chatOptions = new OpenAI.Chat.ChatCompletionOptions();
-        if (options?.Temperature.HasValue == true)
-            chatOptions.Temperature = options.Temperature.Value;
-        if (options?.MaxOutputTokens.HasValue == true)
-            chatOptions.MaxOutputTokenCount = options.MaxOutputTokens.Value;
+        var chatOptions = CreateChatCompletionOptions(options);
 
         // Stream response
         await foreach (var streamUpdate in _chatClient.CompleteChatStreamingAsync(openAiMessages, chatOptions, cancellationToken))
@@ -197,23 +174,33 @@ public sealed class AzureOpenAIChatClientAdapter : IChatClient
         return response;
     }
 
-    private static OpenAI.Chat.ChatTool ConvertToOpenAITool(AIFunction function)
+    internal static OpenAI.Chat.ChatCompletionOptions CreateChatCompletionOptions(ChatOptions? options)
     {
-        // Build function parameters schema
-        var parameters = new
+        var chatOptions = new OpenAI.Chat.ChatCompletionOptions();
+        if (options?.Temperature.HasValue == true)
+            chatOptions.Temperature = options.Temperature.Value;
+        if (options?.MaxOutputTokens.HasValue == true)
+            chatOptions.MaxOutputTokenCount = options.MaxOutputTokens.Value;
+
+        if (options?.Tools is not null)
         {
-            type = "object",
-            properties = new Dictionary<string, object>(),
-            required = new List<string>()
-        };
+            foreach (var function in options.Tools.OfType<AIFunctionDeclaration>())
+                chatOptions.Tools.Add(ConvertToOpenAITool(function));
+        }
 
-        // Note: For now, we create a simple schema
-        // You may need to enhance this based on your AIFunction metadata
-        var functionDef = OpenAI.Chat.ChatTool.CreateFunctionTool(
+        return chatOptions;
+    }
+
+    internal static OpenAI.Chat.ChatTool ConvertToOpenAITool(AIFunctionDeclaration function)
+    {
+        BinaryData? parameters = function.JsonSchema.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+            ? null
+            : BinaryData.FromString(function.JsonSchema.GetRawText());
+
+        return OpenAI.Chat.ChatTool.CreateFunctionTool(
             functionName: function.Name,
-            functionDescription: function.Description);
-
-        return functionDef;
+            functionDescription: function.Description,
+            functionParameters: parameters);
     }
 
     public object? GetService(Type serviceType, object? serviceKey = null)
@@ -230,4 +217,3 @@ public sealed class AzureOpenAIChatClientAdapter : IChatClient
         // Azure client doesn't require explicit disposal
     }
 }
-

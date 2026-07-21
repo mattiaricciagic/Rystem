@@ -26,6 +26,8 @@ public sealed class PlayFrameworkBuilder
     internal Type? CustomMemoryType { get; set; }
     internal Type? CustomMemoryStorageType { get; set; }
     internal bool HasRepository { get; set; }
+    internal bool HasCustomRuntimeDescriptionSnapshotStore { get; set; }
+    internal bool HasRuntimeDescriptionChangeTokenSource { get; set; }
 
     /// <summary>
     /// Fluent builder for registering business hooks (before-execution, after-each-scene, on-terminal-scene).
@@ -169,6 +171,38 @@ public sealed class PlayFrameworkBuilder
         return this;
     }
 
+    /// <summary>
+    /// Configures runtime scene and tool descriptions.
+    /// </summary>
+    public PlayFrameworkBuilder WithRuntimeDescriptions(Action<RuntimeDescriptionSettings> configure)
+    {
+        configure(Settings.RuntimeDescriptions);
+        return this;
+    }
+
+    /// <summary>
+    /// Registers a custom last-known-good snapshot store for this PlayFramework factory.
+    /// </summary>
+    public PlayFrameworkBuilder AddRuntimeDescriptionSnapshotStore<TStore>()
+        where TStore : class, IRuntimeDescriptionSnapshotStore
+    {
+        Services.AddFactory<IRuntimeDescriptionSnapshotStore, TStore>(Name, ServiceLifetime.Singleton);
+        HasCustomRuntimeDescriptionSnapshotStore = true;
+        return this;
+    }
+
+    /// <summary>
+    /// Registers an optional change notification source for this PlayFramework factory.
+    /// Notifications trigger a non-overlapping background refresh when enabled.
+    /// </summary>
+    public PlayFrameworkBuilder AddRuntimeDescriptionChangeTokenSource<TSource>()
+        where TSource : class, IRuntimeDescriptionChangeTokenSource
+    {
+        Services.AddFactory<IRuntimeDescriptionChangeTokenSource, TSource>(Name, ServiceLifetime.Singleton);
+        HasRuntimeDescriptionChangeTokenSource = true;
+        return this;
+    }
+
     #endregion
 
     /// <summary>
@@ -293,6 +327,70 @@ public sealed class PlayFrameworkBuilder
         var builder = new SceneBuilder(sceneConfig, Services);
         configure(builder);
 
+        Scenes.Add(sceneConfig);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a scene whose description is resolved during a runtime refresh.
+    /// </summary>
+    public PlayFrameworkBuilder AddScene(
+        string name,
+        Func<RuntimeDescriptionContext, string> descriptionFactory,
+        Action<SceneBuilder> configure,
+        string? fallbackDescription = null)
+        => AddRuntimeScene(
+            name,
+            RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription),
+            configure,
+            fallbackDescription);
+
+    /// <summary>
+    /// Adds a scene whose description is resolved asynchronously during a runtime refresh.
+    /// </summary>
+    public PlayFrameworkBuilder AddScene(
+        string name,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<string>> descriptionFactory,
+        Action<SceneBuilder> configure,
+        string? fallbackDescription = null)
+        => AddRuntimeScene(
+            name,
+            RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription),
+            configure,
+            fallbackDescription);
+
+    /// <summary>
+    /// Adds a scene whose description and source metadata are resolved during a runtime refresh.
+    /// </summary>
+    public PlayFrameworkBuilder AddScene(
+        string name,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<RuntimeDescriptionValue>> descriptionFactory,
+        Action<SceneBuilder> configure,
+        string? fallbackDescription = null)
+        => AddRuntimeScene(
+            name,
+            RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription),
+            configure,
+            fallbackDescription);
+
+    private PlayFrameworkBuilder AddRuntimeScene(
+        string name,
+        RuntimeTextConfiguration description,
+        Action<SceneBuilder> configure,
+        string? fallbackDescription)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        var sceneConfig = new SceneConfiguration
+        {
+            Name = ToolNameNormalizer.Normalize(name),
+            Description = fallbackDescription ?? string.Empty,
+            RuntimeDescription = description
+        };
+
+        var builder = new SceneBuilder(sceneConfig, Services);
+        configure(builder);
         Scenes.Add(sceneConfig);
         return this;
     }

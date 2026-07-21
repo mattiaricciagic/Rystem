@@ -33,6 +33,7 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
     private readonly IFactory<IJsonService>? _jsonServiceFactory;
     private readonly IFactory<IMemoryStorage>? _memoryStorageFactory;
     private readonly IFactory<IExecutionModeHandler> _executionModeHandlerFactory;
+    private readonly IFactory<RuntimeDescriptionCatalogManager> _runtimeDescriptionCatalogManagerFactory;
     private readonly IPlayFrameworkCache _playFrameworkCache;
     private readonly IToolExecutionManager _toolExecutionManager;
     private readonly IHttpContextAccessor? _httpContextAccessor;
@@ -56,6 +57,7 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
     private IAuthorizationLayer? _authorizationLayer;
     private IJsonService? _jsonService;
     private IRepository<StoredConversation, StoredConversationKey>? _repository;
+    private RuntimeDescriptionCatalogManager _runtimeDescriptionCatalogManager = null!;
 
     public SceneManager(
         IServiceProvider serviceProvider,
@@ -68,6 +70,7 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
         IFactory<ISummarizer> summarizerFactory,
         IFactory<IDirector> directorFactory,
         IFactory<IExecutionModeHandler> executionModeHandlerFactory,
+        IFactory<RuntimeDescriptionCatalogManager> runtimeDescriptionCatalogManagerFactory,
         IPlayFrameworkCache playFrameworkCache,
         IToolExecutionManager toolExecutionManager,
         IHttpContextAccessor? httpContextAccessor = null,
@@ -94,6 +97,7 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
         _summarizerFactory = summarizerFactory;
         _directorFactory = directorFactory;
         _executionModeHandlerFactory = executionModeHandlerFactory;
+        _runtimeDescriptionCatalogManagerFactory = runtimeDescriptionCatalogManagerFactory;
         _playFrameworkCache = playFrameworkCache;
         _toolExecutionManager = toolExecutionManager;
         _httpContextAccessor = httpContextAccessor;
@@ -156,6 +160,8 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
         _authorizationLayer = _authorizationLayerFactory?.Create(name);
         _authenticationLayer = _authenticationLayerFactory?.Create(name);
         _repository = _repositoryFactory?.Create(name);
+        _runtimeDescriptionCatalogManager = _runtimeDescriptionCatalogManagerFactory.Create(name)
+            ?? throw new InvalidOperationException($"Runtime description manager not found for factory: {name}");
 
         if (_repository != null)
         {
@@ -266,8 +272,31 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
 
         await foreach (var initizializeResponse in InitializePlayFrameworkAsync(context, settings, cancellationToken))
         {
+            AttachRuntimeDescriptions(initizializeResponse, context);
             Tracking(initizializeResponse);
             yield return initizializeResponse;
+        }
+
+        if (context.RuntimeDescriptions is { } runtimeDescriptions)
+        {
+            activity?.SetTag(
+                PlayFrameworkActivitySource.Tags.RuntimeDescriptionCatalogId,
+                runtimeDescriptions.CatalogIdentity.CatalogId);
+            activity?.SetTag(
+                PlayFrameworkActivitySource.Tags.RuntimeDescriptionRequestedCatalogId,
+                runtimeDescriptions.RequestedCatalogId);
+            activity?.SetTag(
+                PlayFrameworkActivitySource.Tags.RuntimeDescriptionSourceVersion,
+                runtimeDescriptions.SourceVersion);
+            activity?.SetTag(
+                PlayFrameworkActivitySource.Tags.RuntimeDescriptionRefreshMode,
+                runtimeDescriptions.RefreshMode.ToString());
+            activity?.SetTag(
+                PlayFrameworkActivitySource.Tags.RuntimeDescriptionConsistencyMode,
+                runtimeDescriptions.ConsistencyMode.ToString());
+            activity?.SetTag(
+                PlayFrameworkActivitySource.Tags.RuntimeDescriptionRecoverySource,
+                runtimeDescriptions.RecoverySource.ToString());
         }
 
         if (context.ExecutionPhase != ExecutionPhase.Unauthorized)
@@ -277,6 +306,7 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
                 // Execute without try-catch (yield return restriction)
                 await foreach (var response in ExecuteInternalAsync(context, settings, cancellationToken))
                 {
+                    AttachRuntimeDescriptions(response, context);
                     Tracking(response);
                     yield return response;
                 }
@@ -285,6 +315,7 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
             // Finalization (always executes)
             await foreach (var finalizeResponse in FinalizePlayFrameworkAsync(context, settings, cancellationToken))
             {
+                AttachRuntimeDescriptions(finalizeResponse, context);
                 Tracking(finalizeResponse);
                 yield return finalizeResponse;
             }
@@ -570,6 +601,16 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
             context.ExecutionPhase = ExecutionPhase.Break;
             yield break;
         }
+
+        var requestedCatalogId = _settings.RuntimeDescriptions.ConsistencyMode == RuntimeDescriptionConsistencyMode.Execution
+            ? context.RestoredExecutionState?.RuntimeDescriptionCatalogId
+            : null;
+        var runtimeDescriptions = await _runtimeDescriptionCatalogManager
+            .AcquireAsync(requestedCatalogId, cancellationToken)
+            .ConfigureAwait(false);
+        context.MaterializedRuntimeSceneCatalog = runtimeDescriptions.Catalog;
+        context.RuntimeDescriptions = runtimeDescriptions.ExecutionInfo;
+        context.RuntimeSceneCatalog = runtimeDescriptions.PublicView;
 
         if (loadedFromStorageOrCache)
         {
@@ -996,6 +1037,12 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
         response.ConversationKey = context.ConversationKey;
         context.Responses.Add(response);
         return response;
+    }
+
+    private static void AttachRuntimeDescriptions(AiSceneResponse response, SceneContext context)
+    {
+        if (context.RuntimeDescriptions is not null)
+            response.RuntimeDescriptions = context.RuntimeDescriptions;
     }
 
     /// <summary>

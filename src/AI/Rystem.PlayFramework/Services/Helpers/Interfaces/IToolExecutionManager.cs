@@ -122,6 +122,12 @@ public sealed class ToolExecutionResult
     public string? ToolName { get; init; }
 
     /// <summary>
+    /// JSON-serialized arguments supplied to the tool. When a tool has no arguments,
+    /// this is an empty JSON object (<c>{}</c>) rather than <see langword="null"/>.
+    /// </summary>
+    public string? FunctionArguments { get; init; }
+
+    /// <summary>
     /// Tool result (for completed server tools).
     /// </summary>
     public object? ToolResult { get; init; }

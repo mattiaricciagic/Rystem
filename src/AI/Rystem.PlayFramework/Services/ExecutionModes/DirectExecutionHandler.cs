@@ -45,7 +45,7 @@ internal sealed class DirectExecutionHandler : IExecutionModeHandler
         // Configure chat with scene selection tools
         var chatOptions = new ChatOptions
         {
-            Tools = [.. dependencies.SceneFactory.ScenesAsAiTool]
+            Tools = [.. context.MaterializedRuntimeSceneCatalog.SceneDeclarations]
         };
 
         ChatMessage? finalMessage = null;
@@ -192,7 +192,7 @@ internal sealed class DirectExecutionHandler : IExecutionModeHandler
                 });
 
                 // Execute the selected scene
-                var scene = dependencies.SceneFactory.TryGetScene(selectedSceneName);
+                var scene = context.TryGetRuntimeScene(selectedSceneName);
                 if (scene != null)
                 {
                     // CRITICAL: Add tool result to conversation BEFORE entering scene

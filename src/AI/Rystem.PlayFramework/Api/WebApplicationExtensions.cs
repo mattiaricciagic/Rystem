@@ -114,6 +114,7 @@ public static class WebApplicationExtensions
         var discoveryRoute = factoryName is null ? "/discovery" : $"/{factoryName}/discovery";
         group.MapGet(discoveryRoute, async (
             [FromServices] IFactory<ISceneFactory> sceneFactoryFactory,
+            [FromServices] IFactory<RuntimeDescriptionCatalogManager> runtimeDescriptionManagerFactory,
             [FromServices] IFactory<IMcpServerManager> mcpServerManagerFactory,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
@@ -122,10 +123,13 @@ public static class WebApplicationExtensions
             var targetFactory = factoryName ?? routeFactory ?? "default";
             var sceneFactory = sceneFactoryFactory.Create(targetFactory)
                 ?? throw new InvalidOperationException($"SceneFactory not found for factory '{targetFactory}'");
+            var runtimeDescriptionManager = runtimeDescriptionManagerFactory.Create(targetFactory)
+                ?? throw new InvalidOperationException($"Runtime description manager not found for factory '{targetFactory}'");
 
             var discovery = await BuildDiscoveryResponseAsync(
                 targetFactory,
                 sceneFactory,
+                runtimeDescriptionManager,
                 mcpServerManagerFactory,
                 cancellationToken);
 
@@ -488,15 +492,20 @@ public static class WebApplicationExtensions
     /// <summary>
     /// Builds discovery metadata for scenes and tools.
     /// </summary>
-    private static async Task<PlayFrameworkDiscoveryResponse> BuildDiscoveryResponseAsync(
+    internal static async Task<PlayFrameworkDiscoveryResponse> BuildDiscoveryResponseAsync(
         string factoryName,
         ISceneFactory sceneFactory,
+        RuntimeDescriptionCatalogManager runtimeDescriptionManager,
         IFactory<IMcpServerManager> mcpServerManagerFactory,
         CancellationToken cancellationToken)
     {
+        var runtimeCatalog = runtimeDescriptionManager.CurrentCatalog;
         var response = new PlayFrameworkDiscoveryResponse
         {
-            FactoryName = factoryName
+            FactoryName = factoryName,
+            IsRuntimeResolved = runtimeCatalog is not null,
+            RuntimeDescriptionCatalogId = runtimeCatalog?.Identity.CatalogId,
+            RuntimeDescriptionVersion = runtimeDescriptionManager.CurrentSourceVersion
         };
 
         var services = new Dictionary<string, PlayFrameworkToolSourceInfo>(StringComparer.OrdinalIgnoreCase);
@@ -504,7 +513,7 @@ public static class WebApplicationExtensions
         var mcpServers = new Dictionary<string, PlayFrameworkToolSourceInfo>(StringComparer.OrdinalIgnoreCase);
         var endpoints = new Dictionary<string, PlayFrameworkToolSourceInfo>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var scene in sceneFactory.Scenes)
+        foreach (var scene in runtimeCatalog?.Scenes ?? sceneFactory.Scenes)
         {
             var sceneInfo = new PlayFrameworkSceneInfo
             {

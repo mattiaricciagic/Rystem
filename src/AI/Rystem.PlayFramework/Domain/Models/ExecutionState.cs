@@ -19,6 +19,11 @@ public sealed class ExecutionState
     public SceneExecutionMode? ExecutionMode { get; set; }
 
     /// <summary>
+    /// Runtime description catalog pinned for an interrupted execution.
+    /// </summary>
+    public string? RuntimeDescriptionCatalogId { get; set; }
+
+    /// <summary>
     /// Currently active scene name (if in the middle of scene execution).
     /// </summary>
     public string? CurrentSceneName { get; set; }
@@ -73,6 +78,7 @@ public sealed class ExecutionState
         {
             Phase = phase,
             CurrentSceneName = currentSceneName,
+            RuntimeDescriptionCatalogId = context.RuntimeDescriptions?.CatalogIdentity.CatalogId,
             ExecutedSceneOrder = [.. context.ExecutedSceneOrder],
             ExecutedTools = [.. context.ExecutedTools],
             SceneResults = new Dictionary<string, string>(context.SceneResults, StringComparer.OrdinalIgnoreCase),

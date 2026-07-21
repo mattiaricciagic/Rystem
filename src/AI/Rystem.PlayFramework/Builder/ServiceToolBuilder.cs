@@ -40,6 +40,57 @@ public sealed class ServiceToolBuilder<TService> where TService : class
         return this;
     }
 
+    public ServiceToolBuilder<TService> WithMethod<TResult>(
+        Expression<Func<TService, TResult>> methodSelector,
+        string toolName,
+        Func<RuntimeDescriptionContext, string> descriptionFactory,
+        string? fallbackDescription = null)
+        => AddRuntimeMethod(
+            methodSelector,
+            toolName,
+            RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription),
+            fallbackDescription);
+
+    public ServiceToolBuilder<TService> WithMethod<TResult>(
+        Expression<Func<TService, TResult>> methodSelector,
+        string toolName,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<string>> descriptionFactory,
+        string? fallbackDescription = null)
+        => AddRuntimeMethod(
+            methodSelector,
+            toolName,
+            RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription),
+            fallbackDescription);
+
+    public ServiceToolBuilder<TService> WithMethod<TResult>(
+        Expression<Func<TService, TResult>> methodSelector,
+        string toolName,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<RuntimeDescriptionValue>> descriptionFactory,
+        string? fallbackDescription = null)
+        => AddRuntimeMethod(
+            methodSelector,
+            toolName,
+            RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription),
+            fallbackDescription);
+
+    private ServiceToolBuilder<TService> AddRuntimeMethod<TResult>(
+        Expression<Func<TService, TResult>> methodSelector,
+        string toolName,
+        RuntimeTextConfiguration description,
+        string? fallbackDescription)
+    {
+        var methodInfo = ExtractMethodInfo(methodSelector);
+        _config.ServiceTools.Add(new ServiceToolConfiguration
+        {
+            ServiceType = typeof(TService),
+            Method = methodInfo,
+            ToolName = ToolNameNormalizer.Normalize(toolName),
+            Description = fallbackDescription ?? string.Empty,
+            RuntimeDescription = description
+        });
+        return this;
+    }
+
     private static MethodInfo ExtractMethodInfo<TResult>(Expression<Func<TService, TResult>> methodSelector)
     {
         // Handle method call expression: x => x.Method(args)
@@ -77,4 +128,5 @@ internal sealed class ServiceToolConfiguration
     public required MethodInfo Method { get; init; }
     public required string ToolName { get; init; }
     public required string Description { get; init; }
+    public RuntimeTextConfiguration? RuntimeDescription { get; init; }
 }

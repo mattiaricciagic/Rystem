@@ -44,11 +44,12 @@ internal sealed class Scene : IScene
 
 
         Description = CreateDescription(configuration, Tools);
-        AiTool = AIFunctionFactory.Create(
+        AiFunction = AIFunctionFactory.Create(
             () => Name,
             Name,
             Description,
             JsonHelper.JsonSerializerOptions);
+        AiTool = AiFunction.AsDeclarationOnly();
     }
     private static string CreateDescription(SceneConfiguration configuration, List<ISceneTool> tools)
     {

@@ -47,7 +47,10 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
     /// <summary>
     /// Represents a pending client-side tool or command waiting for execution.
     /// </summary>
-    private sealed record PendingCommand(ClientInteractionRequest Request, FunctionCallContent Call);
+    private sealed record PendingCommand(
+        ClientInteractionRequest Request,
+        FunctionCallContent Call,
+        string FunctionArguments);
 
     /// <inheritdoc />
     public async IAsyncEnumerable<ToolExecutionResult> ExecuteToolCallsAsync(
@@ -78,6 +81,9 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
 
             _logger.LogDebug("Processing tool call {Index}/{Total}: '{ToolName}' (CallId: {CallId})",
                 i + 1, deduplicatedCalls.Count, functionCall.Name, functionCall.CallId);
+
+            var functionArguments = jsonService.Serialize(
+                functionCall.Arguments ?? new Dictionary<string, object?>());
 
             // Check if this is a client-side tool
             var clientRequest = clientInteractionDefinitions != null
@@ -111,7 +117,7 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
                 }
 
                 // CLIENT TOOL - Add to pending list (will be processed after server tools)
-                pendingCommands.Add(new PendingCommand(clientRequest, functionCall));
+                pendingCommands.Add(new PendingCommand(clientRequest, functionCall, functionArguments));
 
                 _logger.LogDebug("Added '{ToolName}' to pending {Type} list (feedbackMode: {FeedbackMode})",
                     functionCall.Name,
@@ -127,6 +133,7 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
             {
                 Status = ToolExecutionStatus.Started,
                 ToolName = functionCall.Name,
+                FunctionArguments = functionArguments,
                 Message = $"Executing tool: {functionCall.Name}"
             };
 
@@ -146,7 +153,13 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
 
                 if (mcpTool != null)
                 {
-                    var mcpExecutionResult = await ExecuteMcpToolAsync(mcpTool, functionCall, context, jsonService, cancellationToken);
+                    var mcpExecutionResult = await ExecuteMcpToolAsync(
+                        mcpTool,
+                        functionCall,
+                        functionArguments,
+                        context,
+                        jsonService,
+                        cancellationToken);
                     yield return mcpExecutionResult;
                     continue;
                 }
@@ -164,13 +177,20 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
                 {
                     Status = ToolExecutionStatus.Error,
                     ToolName = functionCall.Name,
+                    FunctionArguments = functionArguments,
                     Error = $"Tool '{functionCall.Name}' not found"
                 };
                 continue;
             }
 
             // Execute scene tool and capture result
-            var executionResult = await ExecuteSceneToolAsync(sceneTool, functionCall, context, jsonService, cancellationToken);
+            var executionResult = await ExecuteSceneToolAsync(
+                sceneTool,
+                functionCall,
+                functionArguments,
+                context,
+                jsonService,
+                cancellationToken);
             yield return executionResult;
         }
 
@@ -186,6 +206,7 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
                     InteractionId = pc.Request.InteractionId,
                     CallId = pc.Call.CallId,
                     ToolName = pc.Call.Name,
+                    FunctionArguments = pc.FunctionArguments,
                     IsCommand = pc.Request.IsCommand,
                     FeedbackMode = pc.Request.FeedbackMode
                 }).ToList()
@@ -215,6 +236,7 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
                         ? ToolExecutionStatus.CommandClient
                         : ToolExecutionStatus.AwaitingClient,
                     ToolName = pending.Call.Name,
+                    FunctionArguments = pending.FunctionArguments,
                     Message = $"Awaiting client execution of {(pending.Request.IsCommand ? "command" : "tool")}: {pending.Call.Name}",
                     ClientRequest = pending.Request
                 };
@@ -231,6 +253,7 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
     private async Task<ToolExecutionResult> ExecuteSceneToolAsync(
         ISceneTool sceneTool,
         FunctionCallContent functionCall,
+        string functionArguments,
         SceneContext context,
         IJsonService jsonService,
         CancellationToken cancellationToken)
@@ -250,8 +273,7 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
             ToolExecutionResult result;
             try
             {
-                var argsJson = jsonService.Serialize(functionCall.Arguments ?? new Dictionary<string, object?>());
-                var toolResult = await sceneTool.ExecuteAsync(argsJson, context, cancellationToken);
+                var toolResult = await sceneTool.ExecuteAsync(functionArguments, context, cancellationToken);
 
                 var functionResult = CreateFunctionResult(functionCall, toolResult, jsonService);
                 context.AddToolMessage(new ChatMessage(ChatRole.Tool, [functionResult]));
@@ -260,6 +282,7 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
                 {
                     Status = ToolExecutionStatus.Completed,
                     ToolName = functionCall.Name,
+                    FunctionArguments = functionArguments,
                     ToolResult = toolResult,
                     Message = $"Tool {functionCall.Name} completed"
                 };
@@ -285,6 +308,7 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
                 {
                     Status = ToolExecutionStatus.Error,
                     ToolName = functionCall.Name,
+                    FunctionArguments = functionArguments,
                     Error = ex.Message
                 };
             }
@@ -311,6 +335,7 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
     private async Task<ToolExecutionResult> ExecuteMcpToolAsync(
         AIFunction mcpTool,
         FunctionCallContent functionCall,
+        string functionArguments,
         SceneContext context,
         IJsonService jsonService,
         CancellationToken cancellationToken)
@@ -349,6 +374,7 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
                 {
                     Status = ToolExecutionStatus.Completed,
                     ToolName = functionCall.Name,
+                    FunctionArguments = functionArguments,
                     ToolResult = toolResult,
                     Message = $"Tool {functionCall.Name} completed"
                 };
@@ -374,6 +400,7 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
                 {
                     Status = ToolExecutionStatus.Error,
                     ToolName = functionCall.Name,
+                    FunctionArguments = functionArguments,
                     Error = ex.Message
                 };
             }
@@ -521,6 +548,7 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
                 {
                     Status = ToolExecutionStatus.Error,
                     ToolName = pending.ToolName,
+                    FunctionArguments = pending.FunctionArguments,
                     Error = $"Command '{pending.ToolName}' requires feedback (FeedbackMode.Always) but no result was provided"
                 };
             }
@@ -540,6 +568,7 @@ internal sealed class ToolExecutionManager : IToolExecutionManager
                 {
                     Status = ToolExecutionStatus.Error,
                     ToolName = pending.ToolName,
+                    FunctionArguments = pending.FunctionArguments,
                     Error = $"Client tool '{pending.ToolName}' requires a result but none was provided"
                 };
             }

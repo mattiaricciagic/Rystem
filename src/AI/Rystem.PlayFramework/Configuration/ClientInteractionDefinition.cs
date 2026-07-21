@@ -16,6 +16,8 @@ public sealed class ClientInteractionDefinition
     /// </summary>
     public string? Description { get; init; }
 
+    internal RuntimeTextConfiguration? RuntimeDescription { get; init; }
+
     /// <summary>
     /// Maximum execution time in seconds.
     /// For standard tools: timeout for client response.

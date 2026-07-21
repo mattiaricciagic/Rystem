@@ -41,12 +41,12 @@ internal sealed class ClientInteractionTool : ISceneTool, ISceneToolMetadata
         }
         else
         {
-            var declaration = AIFunctionFactory.Create(
+            var function = AIFunctionFactory.Create(
             () => Name,
             Name,
             Description,
             JsonHelper.JsonSerializerOptions);
-            return declaration;
+            return function.AsDeclarationOnly();
         }
     }
 
