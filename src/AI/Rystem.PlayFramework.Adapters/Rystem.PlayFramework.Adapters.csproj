@@ -18,8 +18,8 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <RepositoryUrl>https://github.com/KeyserDSoze/Rystem/tree/master/src/AI/Rystem.PlayFramework.Adapters</RepositoryUrl>
         <PackageId>Rystem.PlayFramework.Adapters</PackageId>
-        <Version>10.0.11-beta.23</Version>
-        <PackageReleaseNotes>Aligns with Rystem.PlayFramework beta.23 and retains declaration-only runtime tool compatibility across Chat Completions and Responses API.</PackageReleaseNotes>
+        <Version>10.0.11-beta.24</Version>
+        <PackageReleaseNotes>Aligns with Rystem.PlayFramework beta.24 and retains declaration-only runtime tool compatibility across Chat Completions and Responses API.</PackageReleaseNotes>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
         <NoWarn>$(NoWarn);OPENAI001;AOAI001</NoWarn>
@@ -46,7 +46,7 @@
         </When>
         <When Condition=" '$(Configuration)'!='Debug' ">
             <ItemGroup>
-                <PackageReference Include="Rystem.PlayFramework" Version="10.0.11-beta.23" />
+                <PackageReference Include="Rystem.PlayFramework" Version="10.0.11-beta.24" />
             </ItemGroup>
         </When>
     </Choose>
