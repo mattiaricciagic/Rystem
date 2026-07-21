@@ -323,7 +323,7 @@ internal sealed class RuntimeDescriptionCatalogManager : IRuntimeDescriptionRefr
                     outcome,
                     null,
                     recovered,
-                    recovery?.SnapshotStoreOutcome ?? RuntimeDescriptionSnapshotStoreOutcome.NotAttempted,
+                    recovery!.SnapshotStoreOutcome,
                     recovered.Catalog.Descriptions.Count,
                     new RefreshTimings(Source: sourceDuration)),
             RuntimeDescriptionRefreshReason.EveryRequest,
