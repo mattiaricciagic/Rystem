@@ -117,6 +117,14 @@ public sealed class SceneContext
     /// </summary>
     public List<string> ExecutedSceneOrder { get; init; } = [];
 
+    /// <summary>
+    /// Long-term conversation memory loaded from storage during initialization (if any).
+    /// Preserved so it can be passed back as the <c>previousMemory</c> argument when the
+    /// memory is re-synthesized at the end of the request, enabling incremental updates
+    /// of the accumulated summary and important facts across turns.
+    /// </summary>
+    public ConversationMemory? LoadedMemory { get; set; }
+
     #region Conversation History - Single Source of Truth
 
     /// <summary>

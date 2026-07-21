@@ -755,6 +755,10 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
 
             if (previousMemory != null)
             {
+                // Preserve the loaded memory so FinalizePlayFrameworkAsync can pass it as the
+                // previousMemory argument to _memory.SummarizeAsync, enabling incremental updates.
+                context.LoadedMemory = previousMemory;
+
                 _logger.LogInformation(
                     "Previous memory loaded for conversation '{Key}': {ConversationCount} conversations, summary length: {Length} (Factory: {FactoryName})",
                     context.ConversationKey, previousMemory.ConversationCount, previousMemory.Summary?.Length ?? 0, _factoryName);
@@ -878,9 +882,11 @@ internal sealed class SceneManager : ISceneManager, IFactoryName
 
             try
             {
-                // Summarize and save
+                // Summarize and save.
+                // Pass the previously loaded memory so the summary and important facts are
+                // updated incrementally, instead of being rebuilt from scratch every cycle.
                 var updatedMemory = await _memory.SummarizeAsync(
-                    null, // Previous memory already incorporated in conversation
+                    context.LoadedMemory,
                     context.Input.Text ?? string.Empty,
                     memoryMessages,
                     context.Metadata,
