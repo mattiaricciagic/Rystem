@@ -80,11 +80,37 @@ internal sealed class EndpointToolCallingChatClient : IChatClient
         return Task.FromResult(new ChatResponse([msg]) { ModelId = "mock-model" });
     }
 
-    public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+    public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
         IEnumerable<ChatMessage> messages,
         ChatOptions? options = null,
-        CancellationToken cancellationToken = default)
-        => throw new NotImplementedException();
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await Task.Yield();
+        cancellationToken.ThrowIfCancellationRequested();
+        _callCount++;
+
+        if (_callCount == 1)
+        {
+            var update = new ChatResponseUpdate(ChatRole.Assistant, string.Empty)
+            {
+                ModelId = "mock-model",
+                FinishReason = ChatFinishReason.ToolCalls
+            };
+            update.Contents.Add(new FunctionCallContent(
+                Guid.NewGuid().ToString(),
+                _toolName,
+                _arguments));
+            yield return update;
+        }
+        else
+        {
+            yield return new ChatResponseUpdate(ChatRole.Assistant, "Done")
+            {
+                ModelId = "mock-model",
+                FinishReason = ChatFinishReason.Stop
+            };
+        }
+    }
 
     public object? GetService(Type serviceType, object? serviceKey = null) => null;
     public void Dispose() { }
@@ -787,8 +813,10 @@ public sealed class EndpointHttpToolTests
 
     // ── Group 4: HTTP Execution via end-to-end pipeline ───────────────────────
 
-    [Fact]
-    public async Task Execution_GetWithRouteParam_SendsCorrectHttpRequest()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Execution_GetWithRouteParam_PropagatesFunctionArguments(bool enableStreaming)
     {
         var handler = new CapturingHttpHandler(
             new HttpResponseMessage(HttpStatusCode.OK)
@@ -830,7 +858,8 @@ public sealed class EndpointHttpToolTests
         var settings = new SceneRequestSettings
         {
             ExecutionMode = SceneExecutionMode.Scene,
-            SceneName = "Orders"
+            SceneName = "Orders",
+            EnableStreaming = enableStreaming
         };
 
         var responses = new List<AiSceneResponse>();
@@ -842,10 +871,27 @@ public sealed class EndpointHttpToolTests
         Assert.Equal(HttpMethod.Get, handler.CapturedRequest!.Method);
         Assert.Contains("order-123", handler.CapturedRequest.RequestUri!.ToString());
 
-        // Scene execution completed
-        Assert.Contains(responses, r => r.Status == AiResponseStatus.FunctionCompleted
-                                        && r.FunctionName == "GetOrder");
+        // Per-tool public events expose the same arguments used by the HTTP tool.
+        var functionRequest = Assert.Single(
+            responses,
+            r => r.Status == AiResponseStatus.FunctionRequest && r.FunctionName == "GetOrder");
+        var functionCompleted = Assert.Single(
+            responses,
+            r => r.Status == AiResponseStatus.FunctionCompleted && r.FunctionName == "GetOrder");
+
+        AssertFunctionArgument(functionRequest, "orderId", "order-123");
+        AssertFunctionArgument(functionCompleted, "orderId", "order-123");
         Assert.Contains(responses, r => r.Status == AiResponseStatus.Completed);
+    }
+
+    private static void AssertFunctionArgument(
+        AiSceneResponse response,
+        string propertyName,
+        string expectedValue)
+    {
+        Assert.NotNull(response.FunctionArguments);
+        using var arguments = JsonDocument.Parse(response.FunctionArguments);
+        Assert.Equal(expectedValue, arguments.RootElement.GetProperty(propertyName).GetString());
     }
 
     [Fact]
