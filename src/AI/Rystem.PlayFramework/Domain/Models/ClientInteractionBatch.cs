@@ -45,6 +45,12 @@ public sealed class PendingClientInteraction
     public required string ToolName { get; init; }
 
     /// <summary>
+    /// Original JSON-serialized arguments supplied by the model.
+    /// Optional for backward compatibility with batches persisted by older versions.
+    /// </summary>
+    public string? FunctionArguments { get; init; }
+
+    /// <summary>
     /// Whether this is a Command (fire-and-forget) or a ClientTool (requires response).
     /// </summary>
     public required bool IsCommand { get; init; }

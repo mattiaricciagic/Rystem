@@ -9,16 +9,13 @@ namespace Rystem.PlayFramework.Services.ExecutionModes;
 /// </summary>
 internal sealed class SceneExecutionHandler : IExecutionModeHandler
 {
-    private readonly IFactory<ExecutionModeHandlerDependencies> _dependenciesFactory;
     private readonly IFactory<ISceneExecutor> _sceneExecutorFactory;
     private readonly ILogger<SceneExecutionHandler> _logger;
 
     public SceneExecutionHandler(
-        IFactory<ExecutionModeHandlerDependencies> dependenciesFactory,
         IFactory<ISceneExecutor> sceneExecutorFactory,
         ILogger<SceneExecutionHandler> logger)
     {
-        _dependenciesFactory = dependenciesFactory;
         _sceneExecutorFactory = sceneExecutorFactory;
         _logger = logger;
     }
@@ -29,10 +26,6 @@ internal sealed class SceneExecutionHandler : IExecutionModeHandler
         SceneRequestSettings settings,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        // Resolve dependencies from factory
-        var dependencies = _dependenciesFactory.Create(factoryName)
-            ?? throw new InvalidOperationException($"ExecutionModeHandlerDependencies not found for factory: {factoryName}");
-
         var sceneExecutor = _sceneExecutorFactory.Create(factoryName)
             ?? throw new InvalidOperationException($"SceneExecutor not found for factory: {factoryName}");
 
@@ -51,7 +44,7 @@ internal sealed class SceneExecutionHandler : IExecutionModeHandler
         _logger.LogInformation("Scene mode: routing directly to '{SceneName}' (Factory: {FactoryName})",
             settings.SceneName, factoryName?.ToString() ?? "default");
 
-        var targetScene = dependencies.SceneFactory.TryGetScene(settings.SceneName);
+        var targetScene = context.TryGetRuntimeScene(settings.SceneName);
         if (targetScene == null)
         {
             _logger.LogWarning("Scene '{SceneName}' not found in Scene execution mode (Factory: {FactoryName})",

@@ -92,6 +92,19 @@ public static class PlayFrameworkActivitySource
         public const string HookType = "playframework.hook.type";
         public const string HookOutcome = "playframework.hook.outcome";
         public const string HookPriority = "playframework.hook.priority";
+
+        // Runtime description tags. Description text is intentionally excluded.
+        public const string RuntimeDescriptionOperationId = "playframework.runtime_metadata.operation_id";
+        public const string RuntimeDescriptionRefreshReason = "playframework.runtime_metadata.refresh_reason";
+        public const string RuntimeDescriptionRefreshMode = "playframework.runtime_metadata.refresh_mode";
+        public const string RuntimeDescriptionConsistencyMode = "playframework.runtime_metadata.consistency_mode";
+        public const string RuntimeDescriptionOutcome = "playframework.runtime_metadata.outcome";
+        public const string RuntimeDescriptionCatalogId = "playframework.runtime_metadata.catalog_id";
+        public const string RuntimeDescriptionRequestedCatalogId = "playframework.runtime_metadata.requested_catalog_id";
+        public const string RuntimeDescriptionSourceVersion = "playframework.runtime_metadata.source_version";
+        public const string RuntimeDescriptionRecoverySource = "playframework.runtime_metadata.recovery_source";
+        public const string RuntimeDescriptionStoreOutcome = "playframework.runtime_metadata.snapshot_store_outcome";
+        public const string RuntimeDescriptionFailureStage = "playframework.runtime_metadata.failure_stage";
     }
     
     /// <summary>
@@ -142,6 +155,15 @@ public static class PlayFrameworkActivitySource
         public const string HookDenied = "hook.denied";
         public const string HookShortCircuited = "hook.short_circuited";
         public const string HookSuppressed = "hook.suppressed";
+
+        // Runtime description events
+        public const string RuntimeDescriptionRefreshTriggered = "playframework.runtime_metadata.refresh_triggered";
+        public const string RuntimeDescriptionRefreshStarted = "playframework.runtime_metadata.refresh_started";
+        public const string RuntimeDescriptionChangeDetected = "playframework.runtime_metadata.change_detected";
+        public const string RuntimeDescriptionCatalogPublished = "playframework.runtime_metadata.catalog_published";
+        public const string RuntimeDescriptionCatalogUnchanged = "playframework.runtime_metadata.catalog_unchanged";
+        public const string RuntimeDescriptionRefreshFailed = "playframework.runtime_metadata.refresh_failed";
+        public const string RuntimeDescriptionRefreshSkippedBusy = "playframework.runtime_metadata.refresh_skipped_busy";
     }
     
     /// <summary>
@@ -189,5 +211,8 @@ public static class PlayFrameworkActivitySource
         public const string BusinessBeforeExecutionHook = "Business.BeforeExecutionHook";
         public const string BusinessAfterEachSceneHook = "Business.AfterEachSceneHook";
         public const string BusinessOnTerminalSceneHook = "Business.OnTerminalSceneHook";
+
+        // Runtime descriptions
+        public const string RuntimeDescriptionRefresh = "RuntimeDescription.Refresh";
     }
 }

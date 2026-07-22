@@ -11,6 +11,7 @@ namespace Rystem.PlayFramework.Configuration;
 /// </summary>
 public sealed class ClientInteractionBuilder
 {
+    private const string ToolNameEmptyError = "Tool name cannot be empty";
     private readonly List<ClientInteractionDefinition> _definitions = [];
 
     /// <summary>
@@ -29,7 +30,7 @@ public sealed class ClientInteractionBuilder
         int timeoutSeconds = 30) where T : class
     {
         if (string.IsNullOrWhiteSpace(toolName))
-            throw new ArgumentException("Tool name cannot be empty", nameof(toolName));
+            throw new ArgumentException(ToolNameEmptyError, nameof(toolName));
 
         if (timeoutSeconds <= 0)
             throw new ArgumentException("Timeout must be positive", nameof(timeoutSeconds));
@@ -47,6 +48,27 @@ public sealed class ClientInteractionBuilder
         return this;
     }
 
+    public ClientInteractionBuilder AddTool<T>(
+        string toolName,
+        Func<RuntimeDescriptionContext, string> descriptionFactory,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null) where T : class
+        => AddRuntimeTool<T>(toolName, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), timeoutSeconds, fallbackDescription);
+
+    public ClientInteractionBuilder AddTool<T>(
+        string toolName,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<string>> descriptionFactory,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null) where T : class
+        => AddRuntimeTool<T>(toolName, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), timeoutSeconds, fallbackDescription);
+
+    public ClientInteractionBuilder AddTool<T>(
+        string toolName,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<RuntimeDescriptionValue>> descriptionFactory,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null) where T : class
+        => AddRuntimeTool<T>(toolName, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), timeoutSeconds, fallbackDescription);
+
     /// <summary>
     /// Registers a simple tool without arguments.
     /// Use this for tools that don't need parameters (e.g., "PlaySound", "Vibrate").
@@ -61,7 +83,7 @@ public sealed class ClientInteractionBuilder
         int timeoutSeconds = 30)
     {
         if (string.IsNullOrWhiteSpace(toolName))
-            throw new ArgumentException("Tool name cannot be empty", nameof(toolName));
+            throw new ArgumentException(ToolNameEmptyError, nameof(toolName));
 
         if (timeoutSeconds <= 0)
             throw new ArgumentException("Timeout must be positive", nameof(timeoutSeconds));
@@ -75,6 +97,27 @@ public sealed class ClientInteractionBuilder
 
         return this;
     }
+
+    public ClientInteractionBuilder AddTool(
+        string toolName,
+        Func<RuntimeDescriptionContext, string> descriptionFactory,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null)
+        => AddRuntimeTool(toolName, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), timeoutSeconds, fallbackDescription);
+
+    public ClientInteractionBuilder AddTool(
+        string toolName,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<string>> descriptionFactory,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null)
+        => AddRuntimeTool(toolName, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), timeoutSeconds, fallbackDescription);
+
+    public ClientInteractionBuilder AddTool(
+        string toolName,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<RuntimeDescriptionValue>> descriptionFactory,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null)
+        => AddRuntimeTool(toolName, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), timeoutSeconds, fallbackDescription);
 
     /// <summary>
     /// Registers a simple tool without arguments.
@@ -92,7 +135,7 @@ public sealed class ClientInteractionBuilder
         int timeoutSeconds = 30)
     {
         if (string.IsNullOrWhiteSpace(toolName))
-            throw new ArgumentException("Tool name cannot be empty", nameof(toolName));
+            throw new ArgumentException(ToolNameEmptyError, nameof(toolName));
 
         if (timeoutSeconds <= 0)
             throw new ArgumentException("Timeout must be positive", nameof(timeoutSeconds));
@@ -107,6 +150,30 @@ public sealed class ClientInteractionBuilder
 
         return this;
     }
+
+    public ClientInteractionBuilder AddTool(
+        string toolName,
+        string jsonSchema,
+        Func<RuntimeDescriptionContext, string> descriptionFactory,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null)
+        => AddRuntimeTool(toolName, jsonSchema, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), timeoutSeconds, fallbackDescription);
+
+    public ClientInteractionBuilder AddTool(
+        string toolName,
+        string jsonSchema,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<string>> descriptionFactory,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null)
+        => AddRuntimeTool(toolName, jsonSchema, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), timeoutSeconds, fallbackDescription);
+
+    public ClientInteractionBuilder AddTool(
+        string toolName,
+        string jsonSchema,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<RuntimeDescriptionValue>> descriptionFactory,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null)
+        => AddRuntimeTool(toolName, jsonSchema, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), timeoutSeconds, fallbackDescription);
 
     /// <summary>
     /// Registers a command (fire-and-forget tool) with strongly-typed arguments.
@@ -149,6 +216,30 @@ public sealed class ClientInteractionBuilder
         return this;
     }
 
+    public ClientInteractionBuilder AddCommand<T>(
+        string toolName,
+        Func<RuntimeDescriptionContext, string> descriptionFactory,
+        CommandFeedbackMode feedbackMode = CommandFeedbackMode.OnError,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null) where T : class
+        => AddRuntimeCommand<T>(toolName, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), feedbackMode, timeoutSeconds, fallbackDescription);
+
+    public ClientInteractionBuilder AddCommand<T>(
+        string toolName,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<string>> descriptionFactory,
+        CommandFeedbackMode feedbackMode = CommandFeedbackMode.OnError,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null) where T : class
+        => AddRuntimeCommand<T>(toolName, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), feedbackMode, timeoutSeconds, fallbackDescription);
+
+    public ClientInteractionBuilder AddCommand<T>(
+        string toolName,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<RuntimeDescriptionValue>> descriptionFactory,
+        CommandFeedbackMode feedbackMode = CommandFeedbackMode.OnError,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null) where T : class
+        => AddRuntimeCommand<T>(toolName, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), feedbackMode, timeoutSeconds, fallbackDescription);
+
     /// <summary>
     /// Registers a simple command without arguments.
     /// Commands are fire-and-forget - client can execute without sending immediate response.
@@ -182,6 +273,30 @@ public sealed class ClientInteractionBuilder
 
         return this;
     }
+
+    public ClientInteractionBuilder AddCommand(
+        string toolName,
+        Func<RuntimeDescriptionContext, string> descriptionFactory,
+        CommandFeedbackMode feedbackMode = CommandFeedbackMode.OnError,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null)
+        => AddRuntimeCommand(toolName, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), feedbackMode, timeoutSeconds, fallbackDescription);
+
+    public ClientInteractionBuilder AddCommand(
+        string toolName,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<string>> descriptionFactory,
+        CommandFeedbackMode feedbackMode = CommandFeedbackMode.OnError,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null)
+        => AddRuntimeCommand(toolName, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), feedbackMode, timeoutSeconds, fallbackDescription);
+
+    public ClientInteractionBuilder AddCommand(
+        string toolName,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<RuntimeDescriptionValue>> descriptionFactory,
+        CommandFeedbackMode feedbackMode = CommandFeedbackMode.OnError,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null)
+        => AddRuntimeCommand(toolName, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), feedbackMode, timeoutSeconds, fallbackDescription);
 
     /// <summary>
     /// Registers a command with manual JSON schema.
@@ -219,9 +334,167 @@ public sealed class ClientInteractionBuilder
         return this;
     }
 
+    public ClientInteractionBuilder AddCommand(
+        string toolName,
+        string jsonSchema,
+        Func<RuntimeDescriptionContext, string> descriptionFactory,
+        CommandFeedbackMode feedbackMode = CommandFeedbackMode.OnError,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null)
+        => AddRuntimeCommand(toolName, jsonSchema, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), feedbackMode, timeoutSeconds, fallbackDescription);
+
+    public ClientInteractionBuilder AddCommand(
+        string toolName,
+        string jsonSchema,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<string>> descriptionFactory,
+        CommandFeedbackMode feedbackMode = CommandFeedbackMode.OnError,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null)
+        => AddRuntimeCommand(toolName, jsonSchema, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), feedbackMode, timeoutSeconds, fallbackDescription);
+
+    public ClientInteractionBuilder AddCommand(
+        string toolName,
+        string jsonSchema,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<RuntimeDescriptionValue>> descriptionFactory,
+        CommandFeedbackMode feedbackMode = CommandFeedbackMode.OnError,
+        int timeoutSeconds = 30,
+        string? fallbackDescription = null)
+        => AddRuntimeCommand(toolName, jsonSchema, RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription), feedbackMode, timeoutSeconds, fallbackDescription);
+
     /// <summary>
     /// Builds the final list of client interaction definitions.
     /// Called internally by SceneBuilder.
     /// </summary>
     internal IReadOnlyList<ClientInteractionDefinition> Build() => _definitions.AsReadOnly();
+
+    private ClientInteractionBuilder AddRuntimeTool<T>(
+        string toolName,
+        RuntimeTextConfiguration description,
+        int timeoutSeconds,
+        string? fallbackDescription) where T : class
+    {
+        Validate(toolName, timeoutSeconds);
+        var schemaNode = JsonSchemaExporter.GetJsonSchemaAsNode(JsonHelper.JsonSerializerOptions, typeof(T));
+        _definitions.Add(new ClientInteractionDefinition
+        {
+            ToolName = ToolNameNormalizer.Normalize(toolName),
+            Description = fallbackDescription,
+            RuntimeDescription = description,
+            TimeoutSeconds = timeoutSeconds,
+            ArgumentType = typeof(T),
+            JsonSchema = schemaNode.ToJsonString(JsonHelper.JsonSerializerOptions)
+        });
+        return this;
+    }
+
+    private ClientInteractionBuilder AddRuntimeTool(
+        string toolName,
+        RuntimeTextConfiguration description,
+        int timeoutSeconds,
+        string? fallbackDescription)
+    {
+        Validate(toolName, timeoutSeconds);
+        _definitions.Add(new ClientInteractionDefinition
+        {
+            ToolName = ToolNameNormalizer.Normalize(toolName),
+            Description = fallbackDescription,
+            RuntimeDescription = description,
+            TimeoutSeconds = timeoutSeconds
+        });
+        return this;
+    }
+
+    private ClientInteractionBuilder AddRuntimeTool(
+        string toolName,
+        string jsonSchema,
+        RuntimeTextConfiguration description,
+        int timeoutSeconds,
+        string? fallbackDescription)
+    {
+        Validate(toolName, timeoutSeconds);
+        ArgumentException.ThrowIfNullOrWhiteSpace(jsonSchema);
+        _definitions.Add(new ClientInteractionDefinition
+        {
+            ToolName = ToolNameNormalizer.Normalize(toolName),
+            Description = fallbackDescription,
+            RuntimeDescription = description,
+            TimeoutSeconds = timeoutSeconds,
+            JsonSchema = jsonSchema
+        });
+        return this;
+    }
+
+    private ClientInteractionBuilder AddRuntimeCommand<T>(
+        string toolName,
+        RuntimeTextConfiguration description,
+        CommandFeedbackMode feedbackMode,
+        int timeoutSeconds,
+        string? fallbackDescription) where T : class
+    {
+        Validate(toolName, timeoutSeconds);
+        var schemaNode = JsonSchemaExporter.GetJsonSchemaAsNode(JsonHelper.JsonSerializerOptions, typeof(T));
+        _definitions.Add(new ClientInteractionDefinition
+        {
+            ToolName = ToolNameNormalizer.Normalize(toolName),
+            Description = fallbackDescription,
+            RuntimeDescription = description,
+            TimeoutSeconds = timeoutSeconds,
+            ArgumentType = typeof(T),
+            JsonSchema = schemaNode.ToJsonString(JsonHelper.JsonSerializerOptions),
+            IsCommand = true,
+            FeedbackMode = feedbackMode
+        });
+        return this;
+    }
+
+    private ClientInteractionBuilder AddRuntimeCommand(
+        string toolName,
+        RuntimeTextConfiguration description,
+        CommandFeedbackMode feedbackMode,
+        int timeoutSeconds,
+        string? fallbackDescription)
+    {
+        Validate(toolName, timeoutSeconds);
+        _definitions.Add(new ClientInteractionDefinition
+        {
+            ToolName = ToolNameNormalizer.Normalize(toolName),
+            Description = fallbackDescription,
+            RuntimeDescription = description,
+            TimeoutSeconds = timeoutSeconds,
+            IsCommand = true,
+            FeedbackMode = feedbackMode
+        });
+        return this;
+    }
+
+    private ClientInteractionBuilder AddRuntimeCommand(
+        string toolName,
+        string jsonSchema,
+        RuntimeTextConfiguration description,
+        CommandFeedbackMode feedbackMode,
+        int timeoutSeconds,
+        string? fallbackDescription)
+    {
+        Validate(toolName, timeoutSeconds);
+        ArgumentException.ThrowIfNullOrWhiteSpace(jsonSchema);
+        _definitions.Add(new ClientInteractionDefinition
+        {
+            ToolName = ToolNameNormalizer.Normalize(toolName),
+            Description = fallbackDescription,
+            RuntimeDescription = description,
+            TimeoutSeconds = timeoutSeconds,
+            JsonSchema = jsonSchema,
+            IsCommand = true,
+            FeedbackMode = feedbackMode
+        });
+        return this;
+    }
+
+    private static void Validate(string toolName, int timeoutSeconds)
+    {
+        if (string.IsNullOrWhiteSpace(toolName))
+            throw new ArgumentException(ToolNameEmptyError, nameof(toolName));
+        if (timeoutSeconds <= 0)
+            throw new ArgumentException("Timeout must be positive", nameof(timeoutSeconds));
+    }
 }

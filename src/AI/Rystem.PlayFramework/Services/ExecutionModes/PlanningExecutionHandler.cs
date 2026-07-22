@@ -9,20 +9,17 @@ namespace Rystem.PlayFramework.Services.ExecutionModes;
 /// </summary>
 internal sealed class PlanningExecutionHandler : IExecutionModeHandler
 {
-    private readonly IFactory<ExecutionModeHandlerDependencies> _dependenciesFactory;
     private readonly IFactory<ISceneExecutor> _sceneExecutorFactory;
     private readonly IFactory<FinalResponseGenerator> _finalResponseGeneratorFactory;
     private readonly IFactory<IPlanner> _plannerFactory;
     private readonly ILogger<PlanningExecutionHandler> _logger;
 
     public PlanningExecutionHandler(
-        IFactory<ExecutionModeHandlerDependencies> dependenciesFactory,
         IFactory<ISceneExecutor> sceneExecutorFactory,
         IFactory<FinalResponseGenerator> finalResponseGeneratorFactory,
         IFactory<IPlanner> plannerFactory,
         ILogger<PlanningExecutionHandler> logger)
     {
-        _dependenciesFactory = dependenciesFactory;
         _sceneExecutorFactory = sceneExecutorFactory;
         _finalResponseGeneratorFactory = finalResponseGeneratorFactory;
         _plannerFactory = plannerFactory;
@@ -35,10 +32,6 @@ internal sealed class PlanningExecutionHandler : IExecutionModeHandler
         SceneRequestSettings settings,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        // Resolve dependencies from factory
-        var dependencies = _dependenciesFactory.Create(factoryName)
-            ?? throw new InvalidOperationException($"ExecutionModeHandlerDependencies not found for factory: {factoryName}");
-
         var sceneExecutor = _sceneExecutorFactory.Create(factoryName)
             ?? throw new InvalidOperationException($"SceneExecutor not found for factory: {factoryName}");
 
@@ -56,7 +49,7 @@ internal sealed class PlanningExecutionHandler : IExecutionModeHandler
         if (existingPlan != null && existingPlan.Steps.Any(s => !s.IsCompleted))
         {
             // Resume plan execution from where we left off
-            await foreach (var response in ExecutePlanAsync(dependencies, sceneExecutor, finalResponseGenerator, context, settings, existingPlan, cancellationToken))
+            await foreach (var response in ExecutePlanAsync(sceneExecutor, finalResponseGenerator, context, settings, existingPlan, cancellationToken))
             {
                 yield return response;
             }
@@ -96,7 +89,7 @@ internal sealed class PlanningExecutionHandler : IExecutionModeHandler
         else
         {
             // Execute plan
-            await foreach (var response in ExecutePlanAsync(dependencies, sceneExecutor, finalResponseGenerator, context, settings, plan, cancellationToken))
+            await foreach (var response in ExecutePlanAsync(sceneExecutor, finalResponseGenerator, context, settings, plan, cancellationToken))
             {
                 yield return response;
             }
@@ -104,7 +97,6 @@ internal sealed class PlanningExecutionHandler : IExecutionModeHandler
     }
 
     private async IAsyncEnumerable<AiSceneResponse> ExecutePlanAsync(
-        ExecutionModeHandlerDependencies dependencies,
         ISceneExecutor sceneExecutor,
         FinalResponseGenerator finalResponseGenerator,
         SceneContext context,
@@ -138,7 +130,7 @@ internal sealed class PlanningExecutionHandler : IExecutionModeHandler
             yield return YieldStatus(AiResponseStatus.ExecutingScene, $"Executing step {step.StepNumber}: {step.SceneName}");
 
             // Execute scene for this step
-            var scene = dependencies.SceneFactory.TryGetScene(step.SceneName);
+            var scene = context.TryGetRuntimeScene(step.SceneName);
             if (scene == null)
             {
                 yield return YieldAndTrack(context, new AiSceneResponse

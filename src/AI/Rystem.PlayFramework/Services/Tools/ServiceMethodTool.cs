@@ -29,7 +29,7 @@ internal sealed class ServiceMethodTool : ISceneTool, ISceneToolMetadata
             Name,
             Description,
             JsonHelper.JsonSerializerOptions);
-        ToolDescription = aiFunction;
+        ToolDescription = aiFunction.AsDeclarationOnly();
         //var schema = AIJsonUtilities.CreateFunctionJsonSchema(_config.Method, Name, Description, JsonHelper.JsonSerializerOptions);
         //ToolDescription = AIFunctionFactory.CreateDeclaration(Name, Description, schema, null);
         _withoutReturn = _config.Method.ReturnType == typeof(void) || _config.Method.ReturnType == typeof(Task) || _config.Method.ReturnType == typeof(ValueTask);

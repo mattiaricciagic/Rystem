@@ -18,7 +18,8 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/KeyserDSoze/Rystem/tree/master/src/AI/Rystem.PlayFramework</RepositoryUrl>
     <PackageId>Rystem.PlayFramework</PackageId>
-    <Version>10.0.11-beta.21</Version>
+    <Version>10.0.11-beta.24</Version>
+    <PackageReleaseNotes>Resume-summarization now preserves the active scene (populates AiSceneResponse.SceneName, DefaultSummarizer includes it in the prompt) and honors ISummarizer.ShouldSummarize, CharacterThreshold, and SceneRequestSettings.EnableSummarization. Long-term memory re-synthesis now reuses the previously loaded ConversationMemory for incremental updates. EndpointHttpTool builds URLs safely from numeric/boolean arguments (no more crash on non-string JSON). Scene routing function names are normalized for LLM provider compliance and resolved by both raw and normalized name.</PackageReleaseNotes>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
   </PropertyGroup>
@@ -59,6 +60,13 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Update="Docs\RUNTIME_DESCRIPTIONS.md" Pack="true" PackagePath="Docs\RUNTIME_DESCRIPTIONS.md" />
+    <None Update="Docs\FACTORY_PATTERN.md" Pack="true" PackagePath="Docs\FACTORY_PATTERN.md" />
+    <None Update="Docs\DYNAMIC_CHAINING.md" Pack="true" PackagePath="Docs\DYNAMIC_CHAINING.md" />
+    <None Update="Docs\CLIENT_INTERACTION_ARCHITECTURE_V2.md" Pack="true" PackagePath="Docs\CLIENT_INTERACTION_ARCHITECTURE_V2.md" />
+    <None Update="Docs\TELEMETRY.md" Pack="true" PackagePath="Docs\TELEMETRY.md" />
+    <None Update="Docs\RAG_INTEGRATION.md" Pack="true" PackagePath="Docs\RAG_INTEGRATION.md" />
+    <None Update="Docs\MCP_INTEGRATION.md" Pack="true" PackagePath="Docs\MCP_INTEGRATION.md" />
     <None Include="rystem.png" Pack="true" PackagePath="\" />
   </ItemGroup>
     <Choose>

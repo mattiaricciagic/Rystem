@@ -88,6 +88,14 @@ public static class PlayFrameworkMetrics
         "playframework.web_search.searches",
         description: "Total number of web searches performed");
 
+    private static readonly Counter<long> _runtimeDescriptionRefreshCounter = _meter.CreateCounter<long>(
+        "playframework.runtime_metadata.refreshes",
+        description: "Runtime description refresh attempts");
+
+    private static readonly Counter<long> _runtimeDescriptionFallbackCounter = _meter.CreateCounter<long>(
+        "playframework.runtime_metadata.fallbacks",
+        description: "Runtime description refreshes that used a recovery source");
+
     // ========== HISTOGRAMS ==========
 
     /// <summary>
@@ -175,6 +183,11 @@ public static class PlayFrameworkMetrics
     private static readonly Histogram<int> _webSearchResultsHistogram = _meter.CreateHistogram<int>(
         "playframework.web_search.results",
         description: "Number of results returned per web search");
+
+    private static readonly Histogram<double> _runtimeDescriptionRefreshDuration = _meter.CreateHistogram<double>(
+        "playframework.runtime_metadata.refresh.duration",
+        unit: "ms",
+        description: "Runtime description refresh duration in milliseconds");
 
     // ========== GAUGES (Observable) ==========
 
@@ -396,6 +409,41 @@ public static class PlayFrameworkMetrics
         }
 
         _webSearchDurationHistogram.Record(durationMs, tags);
+    }
+
+    /// <summary>
+    /// Records a runtime description refresh using bounded metric dimensions only.
+    /// Catalog IDs, operation IDs, and source versions belong to traces and logs.
+    /// </summary>
+    public static void RecordRuntimeDescriptionRefresh(
+        RuntimeDescriptionRefreshResult result,
+        RuntimeDescriptionRefreshReason reason,
+        RuntimeDescriptionRefreshMode refreshMode,
+        RuntimeDescriptionConsistencyMode consistencyMode)
+    {
+        var tags = new TagList
+        {
+            { "outcome", result.Outcome.ToString() },
+            { "refresh.reason", reason.ToString() },
+            { "refresh.mode", refreshMode.ToString() },
+            { "consistency.mode", consistencyMode.ToString() },
+            { "recovery.source", result.RecoverySource.ToString() },
+            { "snapshot_store.outcome", result.SnapshotStoreOutcome.ToString() },
+            { "failure.stage", result.FailureStage ?? "none" }
+        };
+
+        _runtimeDescriptionRefreshCounter.Add(1, tags);
+        _runtimeDescriptionRefreshDuration.Record(
+            (result.SourceDuration
+                + result.ValidationDuration
+                + result.HashDuration
+                + result.MaterializationDuration
+                + result.PublicationDuration
+                + result.SnapshotStoreDuration).TotalMilliseconds,
+            tags);
+
+        if (result.UsedFallback)
+            _runtimeDescriptionFallbackCounter.Add(1, tags);
     }
 
     // ========== GAUGE MANAGEMENT ==========

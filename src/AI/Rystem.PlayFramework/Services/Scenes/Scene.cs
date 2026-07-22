@@ -44,11 +44,16 @@ internal sealed class Scene : IScene
 
 
         Description = CreateDescription(configuration, Tools);
-        AiTool = AIFunctionFactory.Create(
+        // Normalize the routing function name to comply with LLM provider constraints
+        // (^[a-zA-Z0-9_.-]{1,64}$), consistent with every other tool in the framework.
+        // The scene's own Name stays untouched; only the exposed function name is sanitized,
+        // and MaterializedSceneCatalog.TryGetScene resolves it back via normalized matching.
+        AiFunction = AIFunctionFactory.Create(
             () => Name,
-            Name,
+            ToolNameNormalizer.Normalize(Name),
             Description,
             JsonHelper.JsonSerializerOptions);
+        AiTool = AiFunction.AsDeclarationOnly();
     }
     private static string CreateDescription(SceneConfiguration configuration, List<ISceneTool> tools)
     {

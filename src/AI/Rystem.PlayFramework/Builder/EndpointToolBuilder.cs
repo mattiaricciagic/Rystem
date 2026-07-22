@@ -54,6 +54,45 @@ public sealed class EndpointToolBuilder<TClient> where TClient : class
         return new EndpointActionBuilder(config);
     }
 
+    public EndpointActionBuilder WithAction<TResponse>(
+        string toolName,
+        HttpMethod method,
+        string routeTemplate,
+        Func<RuntimeDescriptionContext, string> descriptionFactory,
+        string? fallbackDescription = null)
+        => AddRuntimeAction<TResponse>(
+            toolName,
+            method,
+            routeTemplate,
+            RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription),
+            fallbackDescription);
+
+    public EndpointActionBuilder WithAction<TResponse>(
+        string toolName,
+        HttpMethod method,
+        string routeTemplate,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<string>> descriptionFactory,
+        string? fallbackDescription = null)
+        => AddRuntimeAction<TResponse>(
+            toolName,
+            method,
+            routeTemplate,
+            RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription),
+            fallbackDescription);
+
+    public EndpointActionBuilder WithAction<TResponse>(
+        string toolName,
+        HttpMethod method,
+        string routeTemplate,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<RuntimeDescriptionValue>> descriptionFactory,
+        string? fallbackDescription = null)
+        => AddRuntimeAction<TResponse>(
+            toolName,
+            method,
+            routeTemplate,
+            RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription),
+            fallbackDescription);
+
     /// <summary>
     /// Registers an HTTP endpoint as an AI tool with a typed request body (POST, PUT, PATCH).
     /// The public properties of <typeparamref name="TRequest"/> are exposed as tool parameters.
@@ -85,6 +124,89 @@ public sealed class EndpointToolBuilder<TClient> where TClient : class
             ResponseType = typeof(TResponse)
         };
 
+        _config.EndpointTools.Add(config);
+        return new EndpointActionBuilder(config);
+    }
+
+    public EndpointActionBuilder WithAction<TRequest, TResponse>(
+        string toolName,
+        HttpMethod method,
+        string routeTemplate,
+        Func<RuntimeDescriptionContext, string> descriptionFactory,
+        string? fallbackDescription = null)
+        => AddRuntimeAction<TRequest, TResponse>(
+            toolName,
+            method,
+            routeTemplate,
+            RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription),
+            fallbackDescription);
+
+    public EndpointActionBuilder WithAction<TRequest, TResponse>(
+        string toolName,
+        HttpMethod method,
+        string routeTemplate,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<string>> descriptionFactory,
+        string? fallbackDescription = null)
+        => AddRuntimeAction<TRequest, TResponse>(
+            toolName,
+            method,
+            routeTemplate,
+            RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription),
+            fallbackDescription);
+
+    public EndpointActionBuilder WithAction<TRequest, TResponse>(
+        string toolName,
+        HttpMethod method,
+        string routeTemplate,
+        Func<RuntimeDescriptionContext, CancellationToken, Task<RuntimeDescriptionValue>> descriptionFactory,
+        string? fallbackDescription = null)
+        => AddRuntimeAction<TRequest, TResponse>(
+            toolName,
+            method,
+            routeTemplate,
+            RuntimeTextConfiguration.From(descriptionFactory, fallbackDescription),
+            fallbackDescription);
+
+    private EndpointActionBuilder AddRuntimeAction<TResponse>(
+        string toolName,
+        HttpMethod method,
+        string routeTemplate,
+        RuntimeTextConfiguration description,
+        string? fallbackDescription)
+    {
+        var config = new EndpointToolConfiguration
+        {
+            ClientType = typeof(TClient),
+            ToolName = ToolNameNormalizer.Normalize(toolName),
+            Description = fallbackDescription ?? string.Empty,
+            RuntimeDescription = description,
+            HttpMethod = method,
+            RouteTemplate = routeTemplate,
+            RequestBodyType = null,
+            ResponseType = typeof(TResponse)
+        };
+        _config.EndpointTools.Add(config);
+        return new EndpointActionBuilder(config);
+    }
+
+    private EndpointActionBuilder AddRuntimeAction<TRequest, TResponse>(
+        string toolName,
+        HttpMethod method,
+        string routeTemplate,
+        RuntimeTextConfiguration description,
+        string? fallbackDescription)
+    {
+        var config = new EndpointToolConfiguration
+        {
+            ClientType = typeof(TClient),
+            ToolName = ToolNameNormalizer.Normalize(toolName),
+            Description = fallbackDescription ?? string.Empty,
+            RuntimeDescription = description,
+            HttpMethod = method,
+            RouteTemplate = routeTemplate,
+            RequestBodyType = typeof(TRequest),
+            ResponseType = typeof(TResponse)
+        };
         _config.EndpointTools.Add(config);
         return new EndpointActionBuilder(config);
     }
@@ -139,6 +261,8 @@ internal sealed class EndpointToolConfiguration
 
     /// <summary>Description sent to the AI model.</summary>
     public required string Description { get; init; }
+
+    internal RuntimeTextConfiguration? RuntimeDescription { get; init; }
 
     /// <summary>HTTP method (GET, POST, PUT, DELETE, PATCH, …).</summary>
     public required HttpMethod HttpMethod { get; init; }

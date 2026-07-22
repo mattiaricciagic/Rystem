@@ -52,7 +52,7 @@ internal sealed class DynamicChainingExecutionHandler : IExecutionModeHandler
             // All scenes are available for selection — scenes can be re-executed
             // when the task requires multiple rounds. The LLM decides based on
             // execution context (BuildChainingContext) whether re-use makes sense.
-            var availableScenes = dependencies.SceneFactory.Scenes.ToList();
+            var availableScenes = context.MaterializedRuntimeSceneCatalog.Scenes.ToList();
 
             if (availableScenes.Count == 0)
             {
@@ -63,7 +63,7 @@ internal sealed class DynamicChainingExecutionHandler : IExecutionModeHandler
             // Select next scene to execute
             yield return YieldStatus(AiResponseStatus.Running, $"Round {sceneExecutionCount + 1}/{settings.MaxDynamicScenes}");
 
-            var selectedScene = await SelectSceneForChainingAsync(dependencies, context, availableScenes, settings, cancellationToken);
+            var selectedScene = await SelectSceneForChainingAsync(context, availableScenes, settings, cancellationToken);
             if (selectedScene == null)
             {
                 dependencies.Logger.LogDebug("DynamicChaining: no suitable scene found, ending chain (Factory: {FactoryName})", factoryNameString);
@@ -155,7 +155,6 @@ internal sealed class DynamicChainingExecutionHandler : IExecutionModeHandler
     }
 
     private async Task<IScene?> SelectSceneForChainingAsync(
-        ExecutionModeHandlerDependencies dependencies,
         SceneContext context,
         List<IScene> availableScenes,
         SceneRequestSettings settings,
@@ -202,7 +201,7 @@ internal sealed class DynamicChainingExecutionHandler : IExecutionModeHandler
         if (functionCall != null)
         {
             var selectedSceneName = functionCall.Name;
-            var selectedScene = dependencies.SceneFactory.TryGetScene(selectedSceneName);
+            var selectedScene = context.TryGetRuntimeScene(selectedSceneName);
 
             // Add tool result to conversation history (required by OpenAI/Azure OpenAI)
             // Assistant message with tool_calls MUST be followed by tool message with result
@@ -232,7 +231,7 @@ internal sealed class DynamicChainingExecutionHandler : IExecutionModeHandler
         var executionSummary = BuildExecutionSummary(context);
 
         // All scenes are available — scenes can be re-executed if needed
-        var allScenes = dependencies.SceneFactory.Scenes;
+        var allScenes = context.MaterializedRuntimeSceneCatalog.Scenes;
 
         if (allScenes.Count == 0)
         {

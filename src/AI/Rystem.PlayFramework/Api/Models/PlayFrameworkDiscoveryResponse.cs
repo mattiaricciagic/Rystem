@@ -39,6 +39,21 @@ public sealed class PlayFrameworkDiscoveryResponse
     /// Tools that do not belong to the standard source buckets.
     /// </summary>
     public List<PlayFrameworkToolInfo> Others { get; set; } = [];
+
+    /// <summary>
+    /// True when descriptions come from a globally published runtime catalog.
+    /// </summary>
+    public bool IsRuntimeResolved { get; set; }
+
+    /// <summary>
+    /// Globally published runtime catalog identity, when available.
+    /// </summary>
+    public string? RuntimeDescriptionCatalogId { get; set; }
+
+    /// <summary>
+    /// Uniform source version last validated for the global catalog, when available.
+    /// </summary>
+    public string? RuntimeDescriptionVersion { get; set; }
 }
 
 /// <summary>

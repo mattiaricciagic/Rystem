@@ -14,7 +14,6 @@ namespace Rystem.PlayFramework;
 internal sealed class DeterministicPlanner : IPlanner
 {
     private readonly IChatClientManager _chatClientManager;
-    private readonly ISceneFactory _sceneFactory;
     private readonly PlayFrameworkSettings _settings;
     private readonly ILogger<DeterministicPlanner> _logger;
 
@@ -29,12 +28,10 @@ internal sealed class DeterministicPlanner : IPlanner
 
     public DeterministicPlanner(
         IChatClientManager chatClientManager,
-        ISceneFactory sceneFactory,
         PlayFrameworkSettings settings,
         ILogger<DeterministicPlanner> logger)
     {
         _chatClientManager = chatClientManager;
-        _sceneFactory = sceneFactory;
         _settings = settings;
         _logger = logger;
     }
@@ -53,7 +50,7 @@ internal sealed class DeterministicPlanner : IPlanner
 
         var messages = new List<ChatMessage>
         {
-            new(ChatRole.System, BuildSystemPrompt()),
+            new(ChatRole.System, BuildSystemPrompt(context)),
             new(ChatRole.User, BuildUserPrompt(context))
         };
 
@@ -149,9 +146,9 @@ internal sealed class DeterministicPlanner : IPlanner
     /// <summary>
     /// System prompt that explains what the planner must do and lists all available scenes with their tools.
     /// </summary>
-    private string BuildSystemPrompt()
+    private static string BuildSystemPrompt(SceneContext context)
     {
-        var scenesDescription = string.Join("\n", _sceneFactory.Scenes.Select(scene =>
+        var scenesDescription = string.Join("\n", context.MaterializedRuntimeSceneCatalog.Scenes.Select(scene =>
         {
             var toolList = scene.Tools.Count > 0
                 ? string.Join(", ", scene.Tools.Select(t => $"{t.Name} ({t.Description})"))

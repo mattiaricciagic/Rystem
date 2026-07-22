@@ -4,6 +4,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Hosting;
 using RepositoryFramework;
 using Rystem.PlayFramework.Mcp;
 using Rystem.PlayFramework.Services;
@@ -69,6 +70,10 @@ public static class ServiceCollectionExtensions
         services.AddEngineFactory<IMcpServerManager>();  // Add MCP server manager factory
         services.AddEngineFactory<IRateLimiter>();  // Add rate limiter factory (optional, but DI needs it registered)
         services.AddEngineFactory<IVoiceAdapter>();  // Add voice adapter factory (optional, registered by adapter packages)
+        services.AddEngineFactory<RuntimeDescriptionCatalogManager>();
+        services.AddEngineFactory<IRuntimeDescriptionRefresher>();
+        services.AddEngineFactory<IRuntimeDescriptionSnapshotStore>();
+        services.AddEngineFactory<IRuntimeDescriptionChangeTokenSource>();
 
         // Business hook engine factories (always registered; no-op when no hooks are configured)
         services.AddEngineFactory<IPlayFrameworkBeforeExecution>();
@@ -109,6 +114,37 @@ public static class ServiceCollectionExtensions
 
         // Register main actors with factory pattern (Singleton)
         services.AddFactory(builder.MainActors, name, ServiceLifetime.Singleton);
+
+        if (!builder.HasCustomRuntimeDescriptionSnapshotStore)
+        {
+            if (builder.Settings.RuntimeDescriptions.SnapshotStoreMode == RuntimeDescriptionSnapshotStoreMode.Distributed)
+            {
+                services.AddFactory<IRuntimeDescriptionSnapshotStore, DistributedRuntimeDescriptionSnapshotStore>(
+                    name, ServiceLifetime.Singleton);
+            }
+            else
+            {
+                services.AddFactory<IRuntimeDescriptionSnapshotStore, MemoryRuntimeDescriptionSnapshotStore>(
+                    name, ServiceLifetime.Singleton);
+            }
+        }
+
+        services.AddFactory<RuntimeDescriptionCatalogManager>(name, ServiceLifetime.Singleton);
+        services.AddFactory<IRuntimeDescriptionRefresher, RuntimeDescriptionCatalogManager>(
+            (serviceProvider, _) => serviceProvider
+                .GetRequiredService<IFactory<RuntimeDescriptionCatalogManager>>()
+                .Create(name)
+                ?? throw new InvalidOperationException($"Runtime description manager not found for factory '{name}'."),
+            name,
+            ServiceLifetime.Singleton);
+
+        services.AddSingleton<IHostedService>(serviceProvider => new RuntimeDescriptionBackgroundService(
+            serviceProvider.GetRequiredService<IFactory<RuntimeDescriptionCatalogManager>>().Create(name)
+                ?? throw new InvalidOperationException($"Runtime description manager not found for factory '{name}'."),
+            builder.HasRuntimeDescriptionChangeTokenSource
+                ? serviceProvider.GetRequiredService<IFactory<IRuntimeDescriptionChangeTokenSource>>().Create(name)
+                : null,
+            serviceProvider.GetRequiredService<ILogger<RuntimeDescriptionBackgroundService>>()));
 
         // Register default transient error detector if not customized
         if (!builder.HasCustomTransientErrorDetector)
@@ -254,4 +290,3 @@ public static class ServiceCollectionExtensions
             SceneExecutionMode.DynamicChaining, ServiceLifetime.Transient);
     }
 }
-
