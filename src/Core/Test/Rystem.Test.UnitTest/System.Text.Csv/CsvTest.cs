@@ -5,7 +5,6 @@ using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text.Csv;
 using System.Text.Json;
-using Newtonsoft.Json.Linq;
 using Xunit;
 using Xunit.Sdk;
 

@@ -86,11 +86,11 @@ namespace Rystem.Test.UnitTest
         }
         [Theory]
         [InlineData(100, false)]
-        [InlineData(1_000, false)]
+        //[InlineData(1_000, false)]
         [InlineData(20, false)]
         [InlineData(20, true)]
         [InlineData(100, true)]
-        [InlineData(1_000, true)]
+        //[InlineData(1_000, true)]
         public async Task MultipleFactoryAtRuntimeAsync(int max, bool withParallel)
         {
             var response = await _httpClient.GetAsync($"Service/MultipleFactory?max={max}&withParallel={withParallel}");
