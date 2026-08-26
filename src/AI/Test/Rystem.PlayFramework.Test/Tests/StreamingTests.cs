@@ -1,5 +1,8 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging.Abstractions;
+using Rystem.PlayFramework.Services;
+using Rystem.PlayFramework.Services.Helpers;
 
 namespace Rystem.PlayFramework.Test.Tests;
 
@@ -304,6 +307,138 @@ public class StreamingTests : PlayFrameworkTestBase
         // Final response should have IsStreamingComplete = true
         var finalStreamResponse = responses.Last(r => r.IsStreamingComplete);
         Assert.NotNull(finalStreamResponse);
+    }
+
+    [Fact]
+    public async Task ProcessOptimisticStreamAsync_EmptyUpdates_DoesNotStreamThem()
+    {
+        var helper = CreateStreamingHelper();
+        var context = CreateContext(new StubChatClientManager(
+            new ChatUpdateWithCost
+            {
+                Update = new ChatResponseUpdate(ChatRole.Assistant, string.Empty)
+            },
+            new ChatUpdateWithCost
+            {
+                Update = new ChatResponseUpdate(ChatRole.Assistant, "Hello")
+            },
+            new ChatUpdateWithCost
+            {
+                Update = new ChatResponseUpdate(ChatRole.Assistant, string.Empty)
+                {
+                    FinishReason = ChatFinishReason.Stop
+                },
+                IsComplete = true
+            }));
+
+        var results = new List<StreamingResult>();
+        await foreach (var result in helper.ProcessOptimisticStreamAsync(
+            context,
+            [],
+            new ChatOptions(),
+            "test-scene",
+            CancellationToken.None))
+        {
+            results.Add(result);
+        }
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal("Hello", results[0].StreamChunk);
+        Assert.True(results[0].StreamedToUser);
+        Assert.Equal("Hello", results[1].FinalMessage?.Text);
+        Assert.Null(results[1].StreamChunk);
+    }
+
+    [Fact]
+    public async Task ProcessChunkAsync_EmptyUpdates_OnlyReturnsTerminalUpdate()
+    {
+        var helper = CreateStreamingHelper();
+        var context = CreateContext(new StubChatClientManager());
+
+        var emptyResults = new List<AiSceneResponse>();
+        await foreach (var result in helper.ProcessChunkAsync(
+            new ChatResponseUpdate(ChatRole.Assistant, string.Empty),
+            "test-scene",
+            context))
+        {
+            emptyResults.Add(result);
+        }
+
+        var textResults = new List<AiSceneResponse>();
+        await foreach (var result in helper.ProcessChunkAsync(
+            new ChatResponseUpdate(ChatRole.Assistant, "Hello"),
+            "test-scene",
+            context))
+        {
+            textResults.Add(result);
+        }
+
+        var terminalResults = new List<AiSceneResponse>();
+        await foreach (var result in helper.ProcessChunkAsync(
+            new ChatResponseUpdate(ChatRole.Assistant, string.Empty)
+            {
+                FinishReason = ChatFinishReason.Stop
+            },
+            "test-scene",
+            context))
+        {
+            terminalResults.Add(result);
+        }
+
+        Assert.Empty(emptyResults);
+        var textResult = Assert.Single(textResults);
+        Assert.Equal("Hello", textResult.StreamingChunk);
+        Assert.False(textResult.IsStreamingComplete);
+        var terminalResult = Assert.Single(terminalResults);
+        Assert.Equal(string.Empty, terminalResult.StreamingChunk);
+        Assert.Equal("Hello", terminalResult.Message);
+        Assert.True(terminalResult.IsStreamingComplete);
+    }
+
+    private static StreamingHelper CreateStreamingHelper()
+    {
+        var toolExecutionManager = new ToolExecutionManager(
+            NullLogger<ToolExecutionManager>.Instance,
+            new ClientInteractionHandler(NullLogger<ClientInteractionHandler>.Instance));
+
+        return new StreamingHelper(
+            NullLogger<StreamingHelper>.Instance,
+            new ResponseHelper(),
+            toolExecutionManager);
+    }
+
+    private static SceneContext CreateContext(IChatClientManager chatClientManager)
+        => new()
+        {
+            ServiceProvider = new ServiceCollection().BuildServiceProvider(),
+            Input = MultiModalInput.FromText("test"),
+            ChatClientManager = chatClientManager
+        };
+}
+
+internal sealed class StubChatClientManager(params ChatUpdateWithCost[] updates) : IChatClientManager
+{
+    public string? ModelId => "stub-model";
+    public string Currency => "USD";
+
+    public Task<ChatResponseWithCost> GetResponseAsync(
+        List<ChatMessage> chatMessages,
+        ChatOptions? options = null,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public async IAsyncEnumerable<ChatUpdateWithCost> GetStreamingResponseAsync(
+        List<ChatMessage> chatMessages,
+        ChatOptions? options = null,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        foreach (var update in updates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return update;
+        }
+
+        await Task.CompletedTask;
     }
 }
 

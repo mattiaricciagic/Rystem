@@ -100,7 +100,7 @@ internal sealed class StreamingHelper : IStreamingHelper
             }
 
             // Stream to user ONLY if no function calls detected yet
-            if (!hasDetectedFunctionCall && chunk.Text != null)
+            if (!hasDetectedFunctionCall && !string.IsNullOrEmpty(chunk.Text))
             {
                 streamedToUser = true;
                 yield return new StreamingResult
@@ -245,7 +245,10 @@ internal sealed class StreamingHelper : IStreamingHelper
             context.Properties.Remove(contextKey);
         }
 
-        yield return streamResponse;
+        if (isComplete || !string.IsNullOrEmpty(chunkText))
+        {
+            yield return streamResponse;
+        }
         await Task.CompletedTask; // Satisfy async requirement
     }
 
