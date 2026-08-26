@@ -27,7 +27,7 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <RepositoryUrl>https://github.com/KeyserDSoze/Rystem/tree/master/src/Repository/RepositoryFramework.Tools.TypescriptGenerator</RepositoryUrl>
         <PackageId>Rystem.RepositoryFramework.TypescriptGenerator</PackageId>
-        <Version>10.0.9</Version>
+        <Version>10.1.0-beta.3</Version>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
         <PackageTags>rystem;typescript;generator;repository;cqrs;codegen;cli;dotnet-tool</PackageTags>
@@ -35,7 +35,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="System.CommandLine" Version="2.0.10" />
+        <PackageReference Include="System.CommandLine" Version="2.0.11" />
     </ItemGroup>
 
     <ItemGroup>

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -18,23 +18,23 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/KeyserDSoze/Rystem/tree/master/src/AI/Rystem.PlayFramework</RepositoryUrl>
     <PackageId>Rystem.PlayFramework</PackageId>
-    <Version>10.0.11-beta.26</Version>
-    <PackageReleaseNotes>Streaming updates without text are no longer emitted as empty chunks. Terminal updates remain observable even when they contain no text.</PackageReleaseNotes>
+    <Version>10.1.0-beta.3</Version>
+    <PackageReleaseNotes>Resume-summarization now preserves the active scene (populates AiSceneResponse.SceneName, DefaultSummarizer includes it in the prompt) and honors ISummarizer.ShouldSummarize, CharacterThreshold, and SceneRequestSettings.EnableSummarization. Long-term memory re-synthesis now reuses the previously loaded ConversationMemory for incremental updates. EndpointHttpTool builds URLs safely from numeric/boolean arguments (no more crash on non-string JSON). Scene routing function names are normalized for LLM provider compliance and resolved by both raw and normalized name.</PackageReleaseNotes>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.8.3" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="10.0.10" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.10" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
-    <PackageReference Include="System.Text.Json" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.9.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+    <PackageReference Include="System.Text.Json" Version="10.0.11" />
     <!-- OpenTelemetry packages -->
-    <PackageReference Include="OpenTelemetry" Version="1.17.0" />
-    <PackageReference Include="OpenTelemetry.Api" Version="1.17.0" />
-    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
+    <PackageReference Include="OpenTelemetry" Version="1.18.0" />
+    <PackageReference Include="OpenTelemetry.Api" Version="1.18.0" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
   </ItemGroup>
 
   <!-- ASP.NET Core framework (only loaded in ASP.NET Core apps, not in Unity/MAUI/WPF) -->
@@ -78,8 +78,8 @@
         </When>
         <When Condition=" '$(Configuration)'!='Debug' ">
             <ItemGroup>
-                <PackageReference Include="Rystem.DependencyInjection" Version="10.0.8" />
-                <PackageReference Include="Rystem.RepositoryFramework.Abstractions" Version="10.0.8" />
+                <PackageReference Include="Rystem.DependencyInjection" Version="10.1.0-beta.3" />
+                <PackageReference Include="Rystem.RepositoryFramework.Abstractions" Version="10.1.0-beta.3" />
             </ItemGroup>
         </When>
     </Choose>

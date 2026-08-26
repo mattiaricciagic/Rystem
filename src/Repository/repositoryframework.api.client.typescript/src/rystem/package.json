@@ -1,9 +1,14 @@
 {
   "name": "rystem.repository.client",
-  "version": "0.2.7",
+  "version": "10.1.0-beta.3",
   "author": "Alessandro Rapiti <alessandro.rapiti44@gmail.com>",
   "license": "MIT",
   "description": "It can simplify the integration with rystem repository server.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KeyserDSoze/Rystem.git",
+    "directory": "src/Repository/repositoryframework.api.client.typescript/src/rystem"
+  },
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "devDependencies": {

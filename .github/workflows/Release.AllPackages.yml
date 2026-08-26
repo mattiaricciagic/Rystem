@@ -1,0 +1,248 @@
+name: Release all packages
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - .github/release-packages.json
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Package group to release
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - ai
+      increment:
+        description: Version increment
+        required: true
+        default: prerelease
+        type: choice
+        options:
+          - prerelease
+          - patch
+          - minor
+          - major
+      version:
+        description: Exact version; leave empty to calculate it from the increment
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rystem-package-release
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_VERSION: 10.x
+
+jobs:
+  prepare:
+    name: Prepare release
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      commit_sha: ${{ steps.commit.outputs.commit_sha }}
+      level_0: ${{ steps.release.outputs.level_0 }}
+      level_1: ${{ steps.release.outputs.level_1 }}
+      level_2: ${{ steps.release.outputs.level_2 }}
+      level_3: ${{ steps.release.outputs.level_3 }}
+      level_4: ${{ steps.release.outputs.level_4 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+      - name: Update versions and calculate dependency graph
+        id: release
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'push') {
+            $version = (Get-Content .github/release-packages.json -Raw | ConvertFrom-Json).version
+            ./scripts/release/Prepare-Release.ps1 -SpecificVersion $version -Profile all
+          }
+          else {
+            $version = '${{ inputs.version }}'
+            if ($version) {
+              ./scripts/release/Prepare-Release.ps1 -SpecificVersion $version -Profile '${{ inputs.profile }}'
+            }
+            else {
+              ./scripts/release/Prepare-Release.ps1 -Increment '${{ inputs.increment }}' -Profile '${{ inputs.profile }}'
+            }
+          }
+      - name: Commit release version
+        id: commit
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/release-packages.json src
+          if git diff --cached --quiet; then
+            echo "No version changes to commit; reusing the current release commit."
+          else
+            git commit -m "release: ${{ steps.release.outputs.version }} [release-all]"
+            git push origin HEAD:master
+          fi
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  level-0:
+    name: L0 - ${{ matrix.package.id }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: Production
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        package: ${{ fromJSON(needs.prepare.outputs.level_0) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+      - uses: actions/setup-dotnet@v4
+        if: matrix.package.kind == 'nuget'
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - uses: actions/setup-node@v4
+        if: matrix.package.kind == 'npm'
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org
+      - name: NuGet login (OIDC)
+        id: nuget-login
+        if: matrix.package.kind == 'nuget'
+        uses: NuGet/login@v1
+        with:
+          user: ${{ github.repository_owner }}
+      - name: Publish and verify
+        shell: pwsh
+        run: ./scripts/release/Publish-Package.ps1 -Kind '${{ matrix.package.kind }}' -Path '${{ matrix.package.path }}' -PackageId '${{ matrix.package.id }}' -Version '${{ needs.prepare.outputs.version }}' -NuGetApiKey '${{ steps.nuget-login.outputs.NUGET_API_KEY }}'
+
+  level-1:
+    name: L1 - ${{ matrix.package.id }}
+    needs: [prepare, level-0]
+    runs-on: ubuntu-latest
+    environment: Production
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        package: ${{ fromJSON(needs.prepare.outputs.level_1) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+      - uses: actions/setup-dotnet@v4
+        if: matrix.package.kind == 'nuget'
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: NuGet login (OIDC)
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ github.repository_owner }}
+      - name: Publish and verify
+        shell: pwsh
+        run: ./scripts/release/Publish-Package.ps1 -Kind '${{ matrix.package.kind }}' -Path '${{ matrix.package.path }}' -PackageId '${{ matrix.package.id }}' -Version '${{ needs.prepare.outputs.version }}' -NuGetApiKey '${{ steps.nuget-login.outputs.NUGET_API_KEY }}'
+
+  level-2:
+    name: L2 - ${{ matrix.package.id }}
+    needs: [prepare, level-1]
+    runs-on: ubuntu-latest
+    environment: Production
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        package: ${{ fromJSON(needs.prepare.outputs.level_2) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: NuGet login (OIDC)
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ github.repository_owner }}
+      - name: Publish and verify
+        shell: pwsh
+        run: ./scripts/release/Publish-Package.ps1 -Kind '${{ matrix.package.kind }}' -Path '${{ matrix.package.path }}' -PackageId '${{ matrix.package.id }}' -Version '${{ needs.prepare.outputs.version }}' -NuGetApiKey '${{ steps.nuget-login.outputs.NUGET_API_KEY }}'
+
+  level-3:
+    name: L3 - ${{ matrix.package.id }}
+    needs: [prepare, level-2]
+    runs-on: ubuntu-latest
+    environment: Production
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        package: ${{ fromJSON(needs.prepare.outputs.level_3) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: NuGet login (OIDC)
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ github.repository_owner }}
+      - name: Publish and verify
+        shell: pwsh
+        run: ./scripts/release/Publish-Package.ps1 -Kind '${{ matrix.package.kind }}' -Path '${{ matrix.package.path }}' -PackageId '${{ matrix.package.id }}' -Version '${{ needs.prepare.outputs.version }}' -NuGetApiKey '${{ steps.nuget-login.outputs.NUGET_API_KEY }}'
+
+  level-4:
+    name: L4 - ${{ matrix.package.id }}
+    needs: [prepare, level-3]
+    runs-on: ubuntu-latest
+    environment: Production
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        package: ${{ fromJSON(needs.prepare.outputs.level_4) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: NuGet login (OIDC)
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ github.repository_owner }}
+      - name: Publish and verify
+        shell: pwsh
+        run: ./scripts/release/Publish-Package.ps1 -Kind '${{ matrix.package.kind }}' -Path '${{ matrix.package.path }}' -PackageId '${{ matrix.package.id }}' -Version '${{ needs.prepare.outputs.version }}' -NuGetApiKey '${{ steps.nuget-login.outputs.NUGET_API_KEY }}'
