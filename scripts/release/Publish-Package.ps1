@@ -60,7 +60,9 @@ if ($Kind -eq 'nuget') {
     }
     $output = Join-Path $env:RUNNER_TEMP "packages/$PackageId"
     New-Item -ItemType Directory -Path $output -Force | Out-Null
-    & dotnet pack $fullPath --configuration Release --output $output -p:Version=$Version
+    & dotnet build $fullPath --configuration Release -p:Version=$Version
+    if ($LASTEXITCODE -ne 0) { throw "dotnet build failed for $PackageId." }
+    & dotnet pack $fullPath --configuration Release --no-build --output $output -p:Version=$Version
     if ($LASTEXITCODE -ne 0) { throw "dotnet pack failed for $PackageId." }
 
     $package = Get-ChildItem $output -Filter '*.nupkg' |
@@ -78,7 +80,13 @@ else {
         if (Test-Path 'package-lock.json') { & npm ci }
         else { & npm install }
         if ($LASTEXITCODE -ne 0) { throw "npm install failed for $PackageId." }
-        & npm publish --access public
+        $publishArguments = @('--access', 'public')
+        if ($Version -match '-') {
+            $tag = [regex]::Match($Version, '-(?<tag>[0-9A-Za-z-]+)\.').Groups['tag'].Value
+            if (-not $tag) { throw "Cannot determine npm dist-tag from version $Version." }
+            $publishArguments += @('--tag', $tag)
+        }
+        & npm publish @publishArguments
         if ($LASTEXITCODE -ne 0) { throw "npm publish failed for $PackageId." }
     }
     finally {
