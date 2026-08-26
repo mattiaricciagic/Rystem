@@ -180,7 +180,7 @@ if ($env:GITHUB_OUTPUT) {
         $matrix = if ($index -lt $levels.Count) {
             @($levels[$index] | Select-Object kind, path, id) | ConvertTo-Json -Compress -AsArray
         }
-        else { '[]' }
+        else { '[{"kind":"none","path":"","id":"none"}]' }
         "level_$index=$matrix" >> $env:GITHUB_OUTPUT
     }
 }

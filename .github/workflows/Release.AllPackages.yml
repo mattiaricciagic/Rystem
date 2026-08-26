@@ -127,6 +127,7 @@ jobs:
         with:
           user: ${{ github.repository_owner }}
       - name: Publish and verify
+        if: matrix.package.kind != 'none'
         shell: pwsh
         run: ./scripts/release/Publish-Package.ps1 -Kind '${{ matrix.package.kind }}' -Path '${{ matrix.package.path }}' -PackageId '${{ matrix.package.id }}' -Version '${{ needs.prepare.outputs.version }}' -NuGetApiKey '${{ steps.nuget-login.outputs.NUGET_API_KEY }}'
 
@@ -153,10 +154,12 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       - name: NuGet login (OIDC)
         id: nuget-login
+        if: matrix.package.kind == 'nuget'
         uses: NuGet/login@v1
         with:
           user: ${{ github.repository_owner }}
       - name: Publish and verify
+        if: matrix.package.kind != 'none'
         shell: pwsh
         run: ./scripts/release/Publish-Package.ps1 -Kind '${{ matrix.package.kind }}' -Path '${{ matrix.package.path }}' -PackageId '${{ matrix.package.id }}' -Version '${{ needs.prepare.outputs.version }}' -NuGetApiKey '${{ steps.nuget-login.outputs.NUGET_API_KEY }}'
 
@@ -178,14 +181,17 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.commit_sha }}
       - uses: actions/setup-dotnet@v4
+        if: matrix.package.kind == 'nuget'
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       - name: NuGet login (OIDC)
         id: nuget-login
+        if: matrix.package.kind == 'nuget'
         uses: NuGet/login@v1
         with:
           user: ${{ github.repository_owner }}
       - name: Publish and verify
+        if: matrix.package.kind != 'none'
         shell: pwsh
         run: ./scripts/release/Publish-Package.ps1 -Kind '${{ matrix.package.kind }}' -Path '${{ matrix.package.path }}' -PackageId '${{ matrix.package.id }}' -Version '${{ needs.prepare.outputs.version }}' -NuGetApiKey '${{ steps.nuget-login.outputs.NUGET_API_KEY }}'
 
@@ -207,14 +213,17 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.commit_sha }}
       - uses: actions/setup-dotnet@v4
+        if: matrix.package.kind == 'nuget'
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       - name: NuGet login (OIDC)
         id: nuget-login
+        if: matrix.package.kind == 'nuget'
         uses: NuGet/login@v1
         with:
           user: ${{ github.repository_owner }}
       - name: Publish and verify
+        if: matrix.package.kind != 'none'
         shell: pwsh
         run: ./scripts/release/Publish-Package.ps1 -Kind '${{ matrix.package.kind }}' -Path '${{ matrix.package.path }}' -PackageId '${{ matrix.package.id }}' -Version '${{ needs.prepare.outputs.version }}' -NuGetApiKey '${{ steps.nuget-login.outputs.NUGET_API_KEY }}'
 
@@ -236,13 +245,16 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.commit_sha }}
       - uses: actions/setup-dotnet@v4
+        if: matrix.package.kind == 'nuget'
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
       - name: NuGet login (OIDC)
         id: nuget-login
+        if: matrix.package.kind == 'nuget'
         uses: NuGet/login@v1
         with:
           user: ${{ github.repository_owner }}
       - name: Publish and verify
+        if: matrix.package.kind != 'none'
         shell: pwsh
         run: ./scripts/release/Publish-Package.ps1 -Kind '${{ matrix.package.kind }}' -Path '${{ matrix.package.path }}' -PackageId '${{ matrix.package.id }}' -Version '${{ needs.prepare.outputs.version }}' -NuGetApiKey '${{ steps.nuget-login.outputs.NUGET_API_KEY }}'
