@@ -2,6 +2,7 @@ param(
     [ValidateSet('prerelease', 'patch', 'minor', 'major')]
     [string]$Increment = 'prerelease',
     [string]$SpecificVersion,
+    [string]$Profile = 'all',
     [string]$ManifestPath = '.github/release-packages.json',
     [string]$PrereleaseLabel = 'beta',
     [switch]$WhatIf
@@ -47,10 +48,20 @@ if ($SpecificVersion) {
 else {
     $newVersion = Get-NextVersion $manifest.version
 }
+$nugetPaths = @($manifest.nuget)
+$npmPaths = @($manifest.npm)
+if ($Profile -ne 'all') {
+    $profileNode = $manifest.profiles.PSObject.Properties[$Profile]
+    if ($null -eq $profileNode) {
+        throw "Release profile '$Profile' was not found in $ManifestPath."
+    }
+    $nugetPaths = @($profileNode.Value.nuget)
+    $npmPaths = @($profileNode.Value.npm)
+}
 $packages = [System.Collections.Generic.List[object]]::new()
 $packageById = @{}
 
-foreach ($relativePath in $manifest.nuget) {
+foreach ($relativePath in $nugetPaths) {
     $fullPath = Join-Path $root $relativePath
     [xml]$project = Get-Content $fullPath -Raw
     $packageIdNode = $project.SelectSingleNode('/Project/PropertyGroup/PackageId')
@@ -71,7 +82,7 @@ foreach ($relativePath in $manifest.nuget) {
     $packageById[$descriptor.id] = $descriptor
 }
 
-foreach ($relativePath in $manifest.npm) {
+foreach ($relativePath in $npmPaths) {
     $fullPath = Join-Path $root $relativePath
     $packageJson = Get-Content $fullPath -Raw | ConvertFrom-Json
     $descriptor = [pscustomobject]@{
@@ -153,7 +164,7 @@ if ($levels.Count -gt 6) {
     throw "The package graph has $($levels.Count) levels, but the workflow supports at most 6."
 }
 
-if (-not $WhatIf) {
+if (-not $WhatIf -and $Profile -eq 'all') {
     $manifest.version = $newVersion
     [IO.File]::WriteAllText($manifestFile, "$(($manifest | ConvertTo-Json -Depth 10))`n")
 }

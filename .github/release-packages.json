@@ -1,6 +1,18 @@
 {
   "version": "10.1.0-beta.3",
   "attempt": 1,
+  "profiles": {
+    "ai": {
+      "nuget": [
+        "src/AI/Rystem.PlayFramework/Rystem.PlayFramework.csproj",
+        "src/AI/Rystem.PlayFramework.Adapters/Rystem.PlayFramework.Adapters.csproj",
+        "src/AI/Rystem.PlayFramework.Adapters.FoundryLocal/Rystem.PlayFramework.Adapters.FoundryLocal.csproj"
+      ],
+      "npm": [
+        "src/AI/Rystem.PlayFramework.Client/src/rystem/package.json"
+      ]
+    }
+  },
   "nuget": [
     "src/Core/Rystem/Rystem.csproj",
     "src/Core/Rystem.DependencyInjection/Rystem.DependencyInjection.csproj",

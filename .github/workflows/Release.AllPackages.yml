@@ -8,6 +8,14 @@ on:
       - .github/release-packages.json
   workflow_dispatch:
     inputs:
+      profile:
+        description: Package group to release
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - ai
       increment:
         description: Version increment
         required: true
@@ -60,15 +68,15 @@ jobs:
         run: |
           if ('${{ github.event_name }}' -eq 'push') {
             $version = (Get-Content .github/release-packages.json -Raw | ConvertFrom-Json).version
-            ./scripts/release/Prepare-Release.ps1 -SpecificVersion $version
+            ./scripts/release/Prepare-Release.ps1 -SpecificVersion $version -Profile all
           }
           else {
             $version = '${{ inputs.version }}'
             if ($version) {
-              ./scripts/release/Prepare-Release.ps1 -SpecificVersion $version
+              ./scripts/release/Prepare-Release.ps1 -SpecificVersion $version -Profile '${{ inputs.profile }}'
             }
             else {
-              ./scripts/release/Prepare-Release.ps1 -Increment '${{ inputs.increment }}'
+              ./scripts/release/Prepare-Release.ps1 -Increment '${{ inputs.increment }}' -Profile '${{ inputs.profile }}'
             }
           }
       - name: Commit release version
