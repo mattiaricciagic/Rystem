@@ -21,7 +21,7 @@ function Test-PackageAvailable {
         if ($Kind -eq 'nuget') {
             $normalizedId = $PackageId.ToLowerInvariant()
             $normalizedVersion = $Version.ToLowerInvariant()
-            $url = "https://api.nuget.org/v3-flatcontainer/$normalizedId/$normalizedVersion/$normalizedId.$normalizedVersion.nupkg"
+            $url = "https://api.nuget.org/v3-registration5-gz-semver2/$normalizedId/$normalizedVersion.json"
         }
         else {
             $escapedId = [Uri]::EscapeDataString($PackageId)
@@ -60,8 +60,18 @@ if ($Kind -eq 'nuget') {
     }
     $output = Join-Path $env:RUNNER_TEMP "packages/$PackageId"
     New-Item -ItemType Directory -Path $output -Force | Out-Null
-    & dotnet build $fullPath --configuration Release -p:Version=$Version
-    if ($LASTEXITCODE -ne 0) { throw "dotnet build failed for $PackageId." }
+    $buildSucceeded = $false
+    $buildDeadline = [DateTimeOffset]::UtcNow.AddMinutes($TimeoutMinutes)
+    do {
+        & dotnet build $fullPath --configuration Release --force -p:Version=$Version -p:RestoreNoCache=true
+        if ($LASTEXITCODE -eq 0) {
+            $buildSucceeded = $true
+            break
+        }
+        Write-Host "Build or restore failed for $PackageId; retrying while NuGet propagates..."
+        Start-Sleep -Seconds 10
+    } while ([DateTimeOffset]::UtcNow -lt $buildDeadline)
+    if (-not $buildSucceeded) { throw "dotnet build failed for $PackageId." }
     & dotnet pack $fullPath --configuration Release --no-build --output $output -p:Version=$Version
     if ($LASTEXITCODE -ne 0) { throw "dotnet pack failed for $PackageId." }
 
