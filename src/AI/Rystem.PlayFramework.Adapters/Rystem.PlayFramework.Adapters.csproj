@@ -12,25 +12,31 @@
         <Authors>Alessandro Rapiti</Authors>
         <Company>Alessandro Rapiti</Company>
         <Product>Rystem.PlayFramework.Adapters</Product>
-        <Description>Azure OpenAI adapter for Rystem.PlayFramework. Supports Responses API, automatic file upload via Files API, and SHA256-based multi-level caching.</Description>
+        <Description>Azure OpenAI v1 adapter for Rystem.PlayFramework, powered by OpenAI 2.12.0. Supports Responses API, automatic file upload via Files API, and SHA256-based multi-level caching.</Description>
         <Copyright>2024</Copyright>
         <PackageIcon>rystem.png</PackageIcon>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <RepositoryUrl>https://github.com/KeyserDSoze/Rystem/tree/master/src/AI/Rystem.PlayFramework.Adapters</RepositoryUrl>
         <PackageId>Rystem.PlayFramework.Adapters</PackageId>
         <Version>10.1.0-beta.4</Version>
-        <PackageReleaseNotes>Aligns with Rystem.PlayFramework beta.24 and retains declaration-only runtime tool compatibility across Chat Completions and Responses API.</PackageReleaseNotes>
+        <PackageReleaseNotes>Migrates Azure OpenAI to the v1 endpoint and OpenAI 2.12.0, removing the incompatible Azure.AI.OpenAI dependency. Existing root endpoints are normalized automatically. Audio uses Azure deployment-specific routes. STT preserves verbose language/duration metadata when supported and explicitly falls back to text-only JSON for deployments that reject verbose_json. Set UseResponsesApi=false as a temporary fallback if Responses is unavailable. The supported graph uses exactly OpenAI 2.12.0 with Microsoft.Extensions.AI.OpenAI 10.9.0; overriding OpenAI directly is unsupported and produces NU1608.</PackageReleaseNotes>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-        <NoWarn>$(NoWarn);OPENAI001;AOAI001</NoWarn>
+        <NoWarn>$(NoWarn);OPENAI001</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Azure.AI.OpenAI" Version="2.9.0-beta.1" />
+        <PackageReference Include="OpenAI" Version="[2.12.0]" />
         <PackageReference Include="Azure.Identity" Version="1.21.0" />
         <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.9.0" />
         <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="10.0.11" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Rystem.PlayFramework.Test</_Parameter1>
+        </AssemblyAttribute>
     </ItemGroup>
 
     <ItemGroup>
