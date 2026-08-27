@@ -15,9 +15,9 @@ Piano eseguibile per migrare `Rystem.PlayFramework.Adapters` da `Azure.AI.OpenAI
 | Fatto | Valore osservato | Riferimento |
 | --- | --- | --- |
 | TargetFramework di tutti i progetti AI | `net10.0` | `Rystem.PlayFramework.Adapters.csproj:4` |
-| Versione progetti AI | `10.1.0-beta.4` | `Rystem.PlayFramework.Adapters.csproj:21` |
+| Versione progetti AI | `10.1.0-beta.5` | `Rystem.PlayFramework.Adapters.csproj:21` |
 | `NoWarn` gia presente | `$(NoWarn);OPENAI001;AOAI001` | `Rystem.PlayFramework.Adapters.csproj:25` |
-| Riferimento al core | `ProjectReference` in Debug, `PackageReference 10.1.0-beta.4` altrimenti | `Rystem.PlayFramework.Adapters.csproj:41-52` |
+| Riferimento al core | `ProjectReference` in Debug, `PackageReference 10.1.0-beta.5` altrimenti | `Rystem.PlayFramework.Adapters.csproj:41-52` |
 | Framework di test | xunit `2.9.3` (v2) + `xunit.runner.visualstudio 4.0.0` | `Rystem.PlayFramework.Test.csproj:24-25` |
 | Reference dell'adapter nei test | assente | `Rystem.PlayFramework.Test.csproj:31-34` |
 | `Trait` nel progetto di test | nessuna occorrenza | progetto `Rystem.PlayFramework.Test` |
@@ -27,7 +27,7 @@ Conseguenze operative:
 
 - ogni `.csproj` va aggiornato singolarmente: non esiste `Directory.Packages.props`;
 - il progetto di test replica `Azure.AI.OpenAI 2.9.0-beta.1` e `Microsoft.Extensions.AI.OpenAI 10.9.0` (`Rystem.PlayFramework.Test.csproj:12`, `:22`), quindi va migrato insieme all'adapter;
-- il build in configurazione diversa da Debug richiede `Rystem.PlayFramework 10.1.0-beta.4` risolvibile da un feed.
+- il build in configurazione diversa da Debug richiede `Rystem.PlayFramework 10.1.0-beta.5` risolvibile da un feed.
 
 ## 2. Difetto riprodotto
 
@@ -603,7 +603,7 @@ dotnet build "src/AI/Rystem.PlayFramework.Adapters.FoundryLocal/Rystem.PlayFrame
 dotnet build "src/AI/Test/Rystem.PlayFramework.Api/Rystem.PlayFramework.Api.csproj" -c Debug -p:GeneratePackageOnBuild=false
 ```
 
-Il build Release dell'adapter richiede `Rystem.PlayFramework 10.1.0-beta.4` risolvibile da un feed, per via del blocco `Choose` (`Rystem.PlayFramework.Adapters.csproj:47-51`).
+Il build Release dell'adapter richiede `Rystem.PlayFramework 10.1.0-beta.5` risolvibile da un feed, per via del blocco `Choose` (`Rystem.PlayFramework.Adapters.csproj:47-51`).
 
 ### Test
 
@@ -723,7 +723,7 @@ Il commit 1 include il `ProjectReference` all'adapter, prerequisito della riprod
 
 Questi punti riguardano l'infrastruttura condivisa del repository. Vanno risolti prima della pubblicazione, ma non appartengono a questo intervento e non ne bloccano l'implementazione.
 
-1. **Disallineamento versioni.** `.github/release-packages.json:2` e a `10.1.0-beta.3`, i `.csproj` del profilo `ai` a `10.1.0-beta.4`. Causa: `scripts/release/Prepare-Release.ps1:167-170` aggiorna il manifest solo con `Profile -eq 'all'`. Rilasciare con profilo `all` oppure aggiornare il manifest come step esplicito.
+1. **Disallineamento versioni.** `.github/release-packages.json:2` e a `10.1.0-beta.3`, i `.csproj` interessati da questa migrazione a `10.1.0-beta.5`. Causa: `scripts/release/Prepare-Release.ps1:167-170` aggiorna il manifest solo con `Profile -eq 'all'`. Rilasciare con profilo `all` oppure aggiornare il manifest come step esplicito.
 2. **Doppio publisher.** `PackageDeploy.Rystem.PlayFramework.Adapters.yml:6-8` si attiva su modifica del `.csproj`, che `Prepare-Release.ps1:106-120` modifica e `Release.AllPackages.yml:82-95` committa. Disabilitare il workflow dedicato e lasciare `Release.AllPackages.yml` come unico publisher.
 3. **Ricostruzione degli artefatti.** `scripts/release/Publish-Package.ps1:66-75` esegue `dotnet build --force` seguito da `dotnet pack --no-build`, quindi il `.nupkg` pubblicato non e quello validato in QA. Decidere se modificare lo script o accettare e documentare la ricostruzione.
 4. **Livello di release perso.** `Prepare-Release.ps1:179` emette `level_0..level_5`, `Release.AllPackages.yml:55-59` ne consuma cinque. Un grafo a sei livelli perderebbe l'ultimo. Il profilo `ai` ha tre package e non raggiunge la soglia.
