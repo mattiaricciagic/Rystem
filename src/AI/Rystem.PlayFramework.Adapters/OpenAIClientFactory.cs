@@ -154,7 +154,9 @@ internal static class OpenAIClientFactory
 
         private void AddApiVersion(PipelineMessage message)
         {
-            var builder = new UriBuilder(message.Request.Uri!);
+            var requestUri = message.Request.Uri
+                ?? throw new InvalidOperationException("The audio request URI is not available.");
+            var builder = new UriBuilder(requestUri);
             var query = builder.Query.TrimStart('?');
             var apiVersion = builder.Path.EndsWith("/audio/speech", StringComparison.OrdinalIgnoreCase)
                 ? AudioSpeechApiVersion

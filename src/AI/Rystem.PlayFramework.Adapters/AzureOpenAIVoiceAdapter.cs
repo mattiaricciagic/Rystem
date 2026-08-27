@@ -55,6 +55,7 @@ internal sealed class AzureOpenAIVoiceAdapter : IVoiceAdapter
         {
             Volatile.Write(ref _requiresSimpleTranscriptionFormat, 1);
             _logger?.LogWarning(
+                exception,
                 "The STT deployment does not support verbose_json; falling back to json. " +
                 "Detected language and duration will not be available for this deployment.");
             transcription = await TranscribeAsync(

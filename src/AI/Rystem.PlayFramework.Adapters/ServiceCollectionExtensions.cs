@@ -50,6 +50,9 @@ public static class ServiceCollectionExtensions
 
     private static IChatClient CreateChatClient(IServiceProvider sp, AdapterSettings settings)
     {
+        var endpoint = settings.Endpoint
+            ?? throw new InvalidOperationException("AdapterSettings.Endpoint is required.");
+
         // Share a single credential instance across the chat/Responses client and the
         // optional audio client: DefaultAzureCredential probes multiple credential sources
         // on construction, so building it once per adapter avoids doing that work twice.
@@ -79,9 +82,12 @@ public static class ServiceCollectionExtensions
         // Wrap with SpeechToTextChatClient if audio mode is SpeechToText
         if (settings.AudioMode == AudioMode.SpeechToText)
         {
+            var speechToTextDeployment = settings.SpeechToTextDeployment
+                ?? throw new InvalidOperationException(
+                    "AdapterSettings.SpeechToTextDeployment is required when AudioMode is SpeechToText.");
             var audioClient = OpenAIClientFactory.CreateAudioClient(
-                settings.Endpoint!,
-                settings.SpeechToTextDeployment!,
+                endpoint,
+                speechToTextDeployment,
                 settings.ApiKey,
                 settings.UseAzureCredential,
                 configure: null,
@@ -105,8 +111,10 @@ public static class ServiceCollectionExtensions
 
     private static OpenAIClient CreateOpenAIClient(AdapterSettings settings, AuthenticationTokenProvider? credential)
     {
+        var endpoint = settings.Endpoint
+            ?? throw new InvalidOperationException("AdapterSettings.Endpoint is required.");
         return OpenAIClientFactory.Create(
-            settings.Endpoint!,
+            endpoint,
             settings.ApiKey,
             settings.UseAzureCredential,
             configure: null,
@@ -203,13 +211,16 @@ public static class ServiceCollectionExtensions
 
     private static IVoiceAdapter CreateVoiceAdapter(IServiceProvider sp, VoiceAdapterSettings settings)
     {
+        var endpoint = settings.Endpoint
+            ?? throw new InvalidOperationException("VoiceAdapterSettings.Endpoint is required.");
+
         // Share a single credential instance between the STT and TTS clients (see CreateChatClient).
         var credential = settings.UseAzureCredential ? new DefaultAzureCredential() : null;
         var sttClient = OpenAIClientFactory.CreateAudioClient(
-            settings.Endpoint!, settings.SttDeployment, settings.ApiKey, settings.UseAzureCredential,
+            endpoint, settings.SttDeployment, settings.ApiKey, settings.UseAzureCredential,
             configure: null, transcriptionApiVersion: settings.SttApiVersion, tokenProvider: credential);
         var ttsClient = OpenAIClientFactory.CreateAudioClient(
-            settings.Endpoint!, settings.TtsDeployment, settings.ApiKey, settings.UseAzureCredential,
+            endpoint, settings.TtsDeployment, settings.ApiKey, settings.UseAzureCredential,
             configure: null, transcriptionApiVersion: null, tokenProvider: credential);
         var logger = sp.GetService<ILoggerFactory>()?.CreateLogger<AzureOpenAIVoiceAdapter>();
 
